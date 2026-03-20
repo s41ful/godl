@@ -4,63 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"goDownloader/config"
+	"goDownloader/httpclient"
 	"io"
 	"log"
-	"net/http"
 	"regexp"
+	"net/http"
 	"strconv"
 	"strings"
-	"net/http/httputil"
-	"time"
-	"goDownloader/config"
 )
-
-var tr = http.Transport{
-	MaxIdleConns:        100,
-	MaxIdleConnsPerHost: 20,
-	MaxConnsPerHost:     20,
-	IdleConnTimeout:     30 * time.Second,
-}
-
-
-type LogTransport struct {
-	Base http.RoundTripper
-	Debug bool
-}
-
-func (l *LogTransport)RoundTrip(r *http.Request) (*http.Response, error){
-	log.Printf("SENDING REQUEST:\n%s\n", dumpRequest(r))
-
-	resp, err := l.Base.RoundTrip(r)
-	if err != nil {
-		log.Printf("ERROR: %s\n", err)
-		return resp, err
-	}
-	log.Printf("RECEIVING HEADERS:\n%s\n", dumpResponseHeader(resp))
-
-	return resp, err
-}
-
-func NewClient(debug bool) *http.Client {
-	if debug {
-		return &http.Client{
-			Transport: &LogTransport{
-				Debug: true,
-			},
-		}
-	} else {
-		return &http.Client{
-			Transport: &http.Transport{
-				MaxIdleConnsPerHost: 16,
-				IdleConnTimeout: 1 * time.Second,
-				
-			},
-		}
-	}
-}
-
-
-
 
 type Target struct {
 	FileName string
@@ -159,11 +111,10 @@ type Formats struct {
 	Height 			int 	`json:"height"`
 }
 
-
-var client *http.Client
+var client = httpclient.ExtracrorClient
 
 func ExtractUrl(url string, config config.Config) ([]Target, error) {
-	client = NewClient(config.Debug)
+	client = httpclient.NewClient(config.Debug)
 	webPageMetadata, err := ExtractWebPage(url)
 	if err != nil {
 		return nil, fmt.Errorf("error: error while extracting web page, %s", err)
@@ -219,18 +170,13 @@ func ExtractUrl(url string, config config.Config) ([]Target, error) {
 
 func ExtractWebPage(url string) (YtMetaData, error) {
 	target := "ytInitialPlayerResponse"
-	req, err := http.NewRequest("GET", url, nil)
+	//req, err := http.NewRequest("GET", url, nil)
+	req, err := httpclient.NewDefaultWebRequest(url)
 	if err != nil {
 		fmt.Println(err)
 		return YtMetaData{}, err
 	}
 	log.Println("Extracting Web Page")
-
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-
-	req.Header.Set("Accept-Language", "en-us,en;q=0.5")
-
 	log.Printf("[Extracting Web Page] sending request\n")
 
 	resp, err := client.Do(req)
@@ -277,14 +223,11 @@ func ExtractWebPage(url string) (YtMetaData, error) {
 	VisitorData := getVisitorData(html)
 	PlayerUrl := "https://www.youtube.com" + getPlayerUrl(html)
 
-	req, err = http.NewRequest("GET", PlayerUrl, nil)
+	req, err = httpclient.NewDefaultWebRequest(url)
 	if err != nil {
 		fmt.Println(err)
 		return YtMetaData{}, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0;     Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36")                                          
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")                                                                                      
-	req.Header.Set("Accept-Language", "en-us,en;q=0.5")        
 
 	resp,err = client.Do(req)
 	if err != nil {
@@ -627,21 +570,3 @@ func pickBestVideo(formats []Formats) *Formats {
 	return best
 }
 
-func dumpRequest(req *http.Request) string {
-	dump, err := httputil.DumpRequestOut(req, true)
-	if err != nil {
-		return "dump error:" + err.Error()
-	}
-	return string(dump)
-}
-
-
-func dumpResponseHeader(resp *http.Response) string {
-	dump, err := httputil.DumpResponse(resp, false)
-	if err != nil {
-		return "dump error: " + err.Error() 
-	}
-
-	return string(dump)
-}
-		
