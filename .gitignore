@@ -1,5 +1,4 @@
 # Binary hasil compile (sesuaikan dengan nama outputmu)
-downloader
 *.exe
 *.exe~
 *.dll
