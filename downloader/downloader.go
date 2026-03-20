@@ -16,7 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 )
-
+//TODO : buat fungsi download paralel untuk direct url 
 var Progress chan int64
 
 type Downloader struct {
@@ -75,14 +75,16 @@ func startGlobalDiskCache(file *os.File, chunkChan <-chan Chunk, maxCacheSize in
 	    firstChunk := cache[startOffset]
 	    copy(mergedData, firstChunk)
 	    totalMerged := len(firstChunk)
-            nextOffset := startOffset + int64(len(mergedData))
+	    nextOffset := startOffset + int64(len(cache[startOffset]))
+	    //log.Printf("startOffset : %d, nextOffset : %d\n", startOffset, nextOffset)
 
             j := i + 1
             for j < len(offsets) && offsets[j] == nextOffset {
+		//log.Printf("offsets(j) == nextOffset : %v\n",offsets[j] == nextOffset)
 		nextChunk := cache[offsets[j]]
 
 		if totalMerged + len(nextChunk) <= maxCacheSize {
-			copy(mergedData[:totalMerged], nextChunk)
+			copy(mergedData[totalMerged:], nextChunk)
 			totalMerged += len(nextChunk)
 
 			nextOffset += int64(len(cache[offsets[j]]))
@@ -92,7 +94,7 @@ func startGlobalDiskCache(file *os.File, chunkChan <-chan Chunk, maxCacheSize in
 
             // Panggil syscall WriteAt SEKALI untuk blok besar hasil penggabungan
 	    file.WriteAt(mergedData[:totalMerged], startOffset)
-	    log.Printf("flushing %d to offset: %d\n", len(mergedData), startOffset)
+	    log.Printf("flushing %d to offset: %d\n", len(mergedData[:totalMerged]), startOffset)
             i = j 
         }
 
@@ -363,7 +365,7 @@ func downloadDirectUrl(url string, config config.Config) error {
 	doneWriter := make(chan bool)
 	var downloaded int64
 
-	if resp.Header["Accept"][0] != "bytes" {
+	if resp.Header["Accept-Ranges"][0] == "bytes" {
 		log.Printf("Server does not support paralel request, downloading all file in 1 connection")
 		go startGlobalDiskCache(f, chunkChan, 16*1024*1024, doneWriter)
 		go showProgress(contentLength, &downloaded)

@@ -12,13 +12,15 @@ type Config struct{
 	Quiet bool
 	OutFile string
 	Threads int
+	DiskCache int
 }
 
 
 func ParseArgs() Config {
-	threads := flag.Int("threads", 4, "Jumlah koneksi")
+	threads := flag.Int("threads", 4, "Total connections")
 	output := flag.String("o", "[godl] videoPlayback.mp4", "Output file")
 	debug := flag.Bool("debug", false, "Debug traffic")
+	diskCache := flag.Int("disk-cache", 16*1024*1024, "Buffer RAM before write into disk")
 
 	flag.Parse()
 
@@ -34,6 +36,7 @@ func ParseArgs() Config {
 		Threads: *threads,
 		OutFile:  *output,
 		Debug: *debug,
+		DiskCache: *diskCache,
 	}
 }
 
