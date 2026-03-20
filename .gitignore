@@ -1,0 +1,21 @@
+# Binary hasil compile (sesuaikan dengan nama outputmu)
+downloader
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Go workspace file
+go.work
+
+# Folder vendor (jika kamu tidak ingin menyimpannya di git)
+vendor/
+node-modules/
+# File log atau temp
+*.log
+tmp/
+yt-files/
