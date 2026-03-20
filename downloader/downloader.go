@@ -4,16 +4,17 @@ import (
 	"fmt"
 	"goDownloader/config"
 	"goDownloader/extractor"
+	"goDownloader/httpclient"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-	"sort"
 )
 
 var Progress chan int64
@@ -22,7 +23,6 @@ type Downloader struct {
 	Url string
 	ParalelDownload bool
 	TotalDetik int
-	TotalSize int
 	Threads int
 	Progress chan int64
 }
@@ -34,52 +34,13 @@ var tr = &http.Transport{
 	IdleConnTimeout:     30 * time.Second,
 }
 
-type RetryTransport struct {
-    Base       http.RoundTripper
-    MaxRetries int
-    Delay      time.Duration
-}
 
 type Chunk struct {
 	Data  []byte
 	Offset int64
 }
 
-func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-    var resp *http.Response
-    var err error
-
-    for i := 0; i <= t.MaxRetries; i++ {
-        resp, err = t.Base.RoundTrip(req)
-
-        // ✅ sukses
-        if err == nil && resp.StatusCode < 500 {
-            return resp, nil
-        }
-	log.Printf("Request Failed retrying: %d\n", i)
-        // ❌ gagal → close body kalau ada
-        if resp != nil && resp.Body != nil {
-            resp.Body.Close()
-        }
-
-        // retry terakhir → return error
-        if i == t.MaxRetries {
-            break
-        }
-
-        time.Sleep(t.Delay)
-    }
-
-    return resp, err
-}
-
-var downloaderClient = &http.Client{
-	Transport: &RetryTransport{
-		Base: tr,
-		MaxRetries: 3,
-		Delay: 1 * time.Second,
-	},
-}
+var downloaderClient = httpclient.DownloaderClient
 
 
 var bufPool = sync.Pool{
@@ -89,6 +50,8 @@ var bufPool = sync.Pool{
 func startGlobalDiskCache(file *os.File, chunkChan <-chan Chunk, maxCacheSize int, done chan<- bool) {
     cache := make(map[int64][]byte)
     currentSize := 0
+
+    mergedData := make([]byte, maxCacheSize)
 
     // Fungsi internal untuk menulis semua yang ada di RAM ke Disk
     flush := func() {
@@ -108,18 +71,27 @@ func startGlobalDiskCache(file *os.File, chunkChan <-chan Chunk, maxCacheSize in
         // Proses Merging: Gabungkan chunk yang bersebelahan sebelum WriteAt
         for i := 0; i < len(offsets); {
             startOffset := offsets[i]
-            mergedData := cache[startOffset]
+
+	    firstChunk := cache[startOffset]
+	    copy(mergedData, firstChunk)
+	    totalMerged := len(firstChunk)
             nextOffset := startOffset + int64(len(mergedData))
 
             j := i + 1
             for j < len(offsets) && offsets[j] == nextOffset {
-                mergedData = append(mergedData, cache[offsets[j]]...)
-                nextOffset += int64(len(cache[offsets[j]]))
-                j++
+		nextChunk := cache[offsets[j]]
+
+		if totalMerged + len(nextChunk) <= maxCacheSize {
+			copy(mergedData[:totalMerged], nextChunk)
+			totalMerged += len(nextChunk)
+
+			nextOffset += int64(len(cache[offsets[j]]))
+			j++
+		} else { break }
             }
 
             // Panggil syscall WriteAt SEKALI untuk blok besar hasil penggabungan
-            file.WriteAt(mergedData, startOffset)
+	    file.WriteAt(mergedData[:totalMerged], startOffset)
 	    log.Printf("flushing %d to offset: %d\n", len(mergedData), startOffset)
             i = j 
         }
@@ -149,6 +121,56 @@ func startGlobalDiskCache(file *os.File, chunkChan <-chan Chunk, maxCacheSize in
     done <- true
 }
 
+func downloadAll(client *http.Client, url string, file *os.File, downloaded *int64, chunkChan chan<- Chunk) error {
+
+    maxRetry := 5
+
+    for attempt := 0; attempt < maxRetry; attempt++ {
+
+        req, _ := httpclient.NewDefaultWebRequest(url)
+
+        resp, err := client.Do(req)
+        if err != nil {
+            log.Println("retry (request error):", err)
+            time.Sleep(time.Second)
+            continue
+        }
+
+        //buf := make([]byte, 32*1024)
+	var offset int64 = 0
+	buf := bufPool.Get().([]byte)
+	defer bufPool.Put(buf)
+
+        for {
+            n, err := resp.Body.Read(buf)
+
+            if n > 0 {
+
+		dataCopy := make([]byte, n)
+		copy(dataCopy, buf[:n])
+
+		chunkChan<-Chunk{Offset: offset, Data: dataCopy}
+                offset += int64(n)
+                atomic.AddInt64(downloaded, int64(n))
+            }
+
+            if err == io.EOF {
+                resp.Body.Close()
+                return nil
+            }
+
+            if err != nil {
+                log.Println("connection error:", err)
+                resp.Body.Close()
+                time.Sleep(time.Second)
+                break // keluar loop read → retry request
+            }
+        }
+    }
+
+    return fmt.Errorf("Download failed after retries")
+}
+
 
 func downloadChunk(client *http.Client, url string, start, end int64, file *os.File, downloaded *int64, chunkChan chan<- Chunk) error {
     maxRetry := 5
@@ -156,11 +178,8 @@ func downloadChunk(client *http.Client, url string, start, end int64, file *os.F
 
     for attempt := 0; attempt < maxRetry; attempt++ {
 
-        req, _ := http.NewRequest("GET", url, nil)
+        req, _ := httpclient.NewDefaultWebRequest(url)
         req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", currentStart, end))
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0;     Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36")                                          
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")                                                                                      
-	req.Header.Set("Accept-Language", "en-us,en;q=0.5")        
 
         resp, err := client.Do(req)
         if err != nil {
@@ -183,14 +202,9 @@ func downloadChunk(client *http.Client, url string, start, end int64, file *os.F
             n, err := resp.Body.Read(buf)
 
             if n > 0 {
-                //_, werr := file.WriteAt(buf[:n], offset)
-                //if werr != nil {
-                  //  resp.Body.Close()
-                    //return werr
-                //}
 
 		dataCopy := make([]byte, n)
-		copy(dataCopy, buf)
+		copy(dataCopy, buf[:n])
 
 		chunkChan<-Chunk{Offset: offset, Data: dataCopy}
                 offset += int64(n)
@@ -321,16 +335,61 @@ func downloadYoutubeVideo(url string, config config.Config) error {
 	return nil
 }
 
+func downloadDirectUrl(url string, config config.Config) error {
+	req, err := httpclient.NewDefaultWebRequest(url)
+	if err != nil {
+		return fmt.Errorf("error while creating request: %s", err)
+	}
+
+	resp, err := downloaderClient.Do(req) 
+	if err != nil {
+		return fmt.Errorf("error while requesting: %s\n", err)
+	}
+
+	contentLength := resp.ContentLength
+
+	_, err = os.Stat(config.OutFile)
+	if os.IsExist(err){
+		config.OutFile += time.DateOnly
+	}
+
+	f, err := os.OpenFile(config.OutFile, os.O_CREATE | os.O_RDWR, 0600)
+	if err != nil {
+		return fmt.Errorf("error while opening file: %s", err)
+	}
+	defer f.Close()
+
+	chunkChan := make(chan Chunk, 100)
+	doneWriter := make(chan bool)
+	var downloaded int64
+
+	if resp.Header["Accept"][0] != "bytes" {
+		log.Printf("Server does not support paralel request, downloading all file in 1 connection")
+		go startGlobalDiskCache(f, chunkChan, 16*1024*1024, doneWriter)
+		go showProgress(contentLength, &downloaded)
+		timeStart := time.Now()
+		err = downloadAll(downloaderClient, url, f, &downloaded, chunkChan)
+		if err != nil {
+			return err
+		}
+
+		close(chunkChan)
+		<-doneWriter
+		log.Printf("Berhasil mendownload file: %s dalam waktu %s\n", config.OutFile, time.Since(timeStart))
+
+	}
+
+	return nil
+}
+
 
 func StartDownload(url string, config config.Config) error {
 	if strings.Contains(url, "youtube") || strings.Contains(url, "youtu.be"){
 		return downloadYoutubeVideo(url, config)
-	}
+	} 
+	log.Printf("Unknown url: trying to download file directly")
 
-
-
-
-	return fmt.Errorf("error: url is not from youtube");
+	return downloadDirectUrl(url, config)
 }
 
 
@@ -376,13 +435,14 @@ func showProgress(total int64, downloaded *int64) {
 
 		bar := renderBar(percent, 20)
 
-		fmt.Printf("\r[%s] %5.1f%% | %s/s | %s/%s | ETA %s",
+		fmt.Printf("\rETA %s [%s] %5.1f%% | %s/s | %s/%s",
+		formatTime(eta),
 		bar,
 		percent,
 		formatBytes(speed),
 		formatBytes(float64(done)),
 		formatBytes(float64(total)),
-		formatTime(eta),)
+	)
 
 		if done >= total {
 			break
