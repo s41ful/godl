@@ -51,8 +51,8 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
     return resp, err
 }
 
-func dumpRequest(req *http.Request) string {
-	dump, err := httputil.DumpRequestOut(req, true)
+func dumpRequest(req *http.Request, withBody bool) string {
+	dump, err := httputil.DumpRequestOut(req, withBody)
 	if err != nil {
 		return "dump error:" + err.Error()
 	}
@@ -103,7 +103,11 @@ type LogTransport struct {
 }
 
 func (l *LogTransport)RoundTrip(r *http.Request) (*http.Response, error){
-	log.Printf("SENDING REQUEST:\n%s\n", dumpRequest(r))
+	if r.Body == nil {
+		log.Printf("SENDING REQUEST:\n%s\n", dumpRequest(r, false))
+	} else {
+		log.Printf("SENDING REQUEST:\n%s\n", dumpRequest(r, true))
+	}
 
 	resp, err := l.Base.RoundTrip(r)
 	if err != nil {
@@ -121,6 +125,7 @@ func NewClient(debugTraffic bool) *http.Client {
 		return &http.Client{
 		
 			Transport: &LogTransport{
+				Base: tr,
 				Debug: true,
 			},
 		}
