@@ -1,24 +1,30 @@
 package youtube
 
 import (
-		"bytes"
-		"encoding/json"
-		"fmt"
-		"goDownloader/config"
-		"goDownloader/httpclient"
-		"io"
-		"log"
-		"regexp"
-		"net/http"
-		"strconv"
-		"strings"
+	"encoding/json"
+	"fmt"
+	"godl/config"
+	"godl/httpclient"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
 )
 
 type Target struct {
-		FileName string
-		FileSize int64
-		Url 	string
+		FileName 			string
+		FileSize 			int64
+		Url 					string
 }
+
+type ExtractedUrl interface{}
+
+type AudioAndVideo struct {
+	Audio 			Target
+	Video 			Target
+}
+
+type VideoSingleUrl Target
 
 type YtMetaData struct {
 		PlayerResponse 			PlayerResponse
@@ -78,6 +84,7 @@ type PlayerResponse struct {
 		StreamingData *struct {
 				Formats         []Formats `json:"formats"`
 				AdaptiveFormats []Formats `json:"adaptiveFormats"`
+				HlsManifestUrl	string		`json:"hlsManifestUrl"`
 		} `json:"streamingData"`
 }
 
@@ -111,27 +118,42 @@ type Formats struct {
 		Height 							int 			`json:"height"`
 }
 
+type YoutubeExtractor struct {
+	configs        		*config.Config 
+	config  					config.ExtractorConfig
+}
+
+const (
+	DEFAULT_YT_CLIENT = "ANDROID_VR"
+)
+
 var client = httpclient.ExtracrorClient
 
-func ExtractUrl(url string, config config.Config) ([]Target, error) {
-		client = httpclient.NewClient(config.Debug)
-		webPageMetadata, err := ExtractWebPage(url)
+func NewYoutubeExtractor(cfg *config.Config) *YoutubeExtractor {
+	return &YoutubeExtractor{
+		configs: 			cfg,
+		config: 			*cfg.ExtractorConfig,	
+
+	}
+}
+
+func (yt *YoutubeExtractor) ExtractUrl(url string) (ExtractedUrl, error) {
+		client = httpclient.NewClient(yt.config.PrintTraffic)
+		webPageMetadata, err := yt.ExtractWebPage(url)
 		if err != nil {
 				return nil, fmt.Errorf("error: error while extracting web page, %s", err)
 		}
 
-		log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-		respApi, err := CallApi(&webPageMetadata)
+		respApi, err := yt.CallApi(&webPageMetadata, DEFAULT_YT_CLIENT)
 		if err != nil {
-				log.Printf("error: %s\n", err.Error())
+				fmt.Printf("error: %s\n", err.Error())
 
 				return nil,fmt.Errorf("error: error while calling api, %s", err)
 		}
 
 		if respApi.PlayabilityStatus.Status != "OK" {
-				// DEBUG log.Println("resp api: ", respApi)
-				log.Fatalf("[Error] %s", respApi.PlayabilityStatus.Reason )
+				fmt.Printf("[Error] %s", respApi.PlayabilityStatus.Reason )
 				return nil, fmt.Errorf("error: error api response != OK")
 		}
 
@@ -141,36 +163,38 @@ func ExtractUrl(url string, config config.Config) ([]Target, error) {
 		}
 
 		bestAudio := pickBestAudio(respApi.StreamingData.AdaptiveFormats)
+		audioFileName := respApi.VideoDetails.Title + ".f" + strconv.Itoa(bestAudio.Itag) + ".mp4a" 
 		audioSize, err := strconv.ParseInt(bestAudio.ContentLength, 10, 64)
 		if err != nil {
 				return nil , err
 		}
 
 		bestVideo := pickBestVideo(respApi.StreamingData.AdaptiveFormats)
+		videoFileName := respApi.VideoDetails.Title + ".f" + strconv.Itoa(bestVideo.Itag) + ".mp4"
 		videoSize, err := strconv.ParseInt(bestVideo.ContentLength, 10, 64)
 		if err != nil {
 				return nil, err
 		}
 
 
-		fmt.Printf("Best Audio Found: itag: %s, height: %s, mimeType: %s\n",bestAudio.Itag, bestAudio.Height, bestAudio.MimeType)
-		fmt.Printf("Best Video Found: Url: %s, itag: %s, height: %s, mimeType: %s\n",  bestVideo.Itag, bestVideo.Height, bestVideo.MimeType)
+		fmt.Printf("[Extractor] getting downloading format %d+%d\n",bestAudio.Itag, bestVideo.Itag)
 
-		return []Target{
-				Target{
-						FileName: webPageMetadata.PlayerResponse.VideoDetails.Title + ".mp4a",
-						Url: bestAudio.Url,
-						FileSize: audioSize,
-				},
-				Target{
-						FileName: webPageMetadata.PlayerResponse.VideoDetails.Title + ".mp4",
-						Url: bestVideo.Url,
-						FileSize: videoSize,
-				},
+		return AudioAndVideo{
+			Audio: Target{
+				FileName: 		audioFileName,
+				FileSize:			audioSize,
+				Url: 					bestAudio.Url,	
+			},
+			Video: Target{
+				FileName: 		videoFileName,
+				FileSize: 		videoSize,
+				Url: 					bestAudio.Url,	
+			},
+
 		}, nil
 }
 
-func ExtractWebPage(url string) (YtMetaData, error) {
+func (yt *YoutubeExtractor) ExtractWebPage(url string) (YtMetaData, error) {
 		target := "ytInitialPlayerResponse"
 		//req, err := http.NewRequest("GET", url, nil)
 		req, err := httpclient.NewDefaultWebRequest(url)
@@ -178,16 +202,13 @@ func ExtractWebPage(url string) (YtMetaData, error) {
 				fmt.Println(err)
 				return YtMetaData{}, err
 		}
-		log.Println("Extracting Web Page")
-		log.Printf("[Extracting Web Page] sending request\n")
+		fmt.Printf("[Extractor] Downloading web page\n")
 
 		resp, err := client.Do(req)
 		if err != nil {
 				fmt.Println(err)
 				return YtMetaData{}, err
 		}
-
-		log.Printf("[Extracting Web Page] receiving response\n")
 
 
 		data, err := io.ReadAll(resp.Body)
@@ -252,7 +273,7 @@ func ExtractWebPage(url string) (YtMetaData, error) {
 		//fmt.Printf("Sts: %s\n", sts)
 
 		return YtMetaData{
-				SignatureTimeStamp: sts,
+				SignatureTimeStamp:		 sts,
 				VisitorData: VisitorData,
 				Cookies: cookies,
 				PlayerUrl: PlayerUrl,
@@ -260,320 +281,4 @@ func ExtractWebPage(url string) (YtMetaData, error) {
 				ApiUrl: apiUrl,
 				InnertubeApiKey: apiKey,
 		}, nil
-
 }
-
-func extractJSON(s string, start int) (string, error) {
-		var count int
-		var inString bool
-		var escape bool
-
-		for i := start; i < len(s); i++ {
-				c := s[i]
-
-				if escape {
-						escape = false
-						continue
-				}
-
-				if c == '\\' {
-						escape = true
-						continue
-				}
-
-				if c == '"' {
-						inString = !inString
-						continue
-				}
-
-				if !inString {
-						if c == '\r' || c == '\n' {
-								fmt.Println("Index :", i)
-						}
-						if c == '{' {
-								count++
-						} else if c == '}' {
-								count--
-								if count == 0 {
-										return s[start : i+1], nil
-								}
-						}
-				}
-		}
-
-		return "", fmt.Errorf("error: invalid JSON")
-}
-
-func getVisitorData(html string) string {
-		re := regexp.MustCompile(`"VISITOR_DATA":"([^"]+)"`)
-		match := re.FindStringSubmatch(html)
-		if len(match) > 1 {
-				return match[1]
-		}
-
-		return "";
-}
-
-func getPlayerUrl(html string) string {
-		re := regexp.MustCompile(`"jsUrl":"([^"]+)"`)
-		match := re.FindStringSubmatch(html)
-		if len(match) > 1 {
-				//log.Printf("playerUrl found: %s\n", match[1])
-				return match[1];
-		}
-
-		return "";
-}
-
-func getSts(baseJs string) string {
-		re := regexp.MustCompile(`signatureTimestamp:(\d+)|sts:(\d+)`)
-		match := re.FindStringSubmatch(baseJs)
-		if len(match) > 1 {
-				//log.Printf("signatureTimestamp found: %s\n", match[1])
-				return match[1];
-		}
-
-		return "";
-
-}
-
-func getApiKey(html string) string {
-		re := regexp.MustCompile(`"INNERTUBE_API_KEY":"([^"]+)"`)
-		match := re.FindStringSubmatch(html)
-
-		if len(match) > 1 {
-				log.Printf("Api key found\n")
-				return match[1]
-		}
-
-		return match[0]
-}
-
-
-func CallApi(ytData *YtMetaData)(PlayerResponse, error){
-		req, err := MakeApiRequest(ytData, "ANDROID_VR")
-		if err != nil {
-				return PlayerResponse{}, err
-		}
-		//log.SetFlags(log.LstdFlags | log.Lshortfile)
-		log.Printf("[Call Api] sending request\n")
-
-		resp, err := client.Do(req)
-		if err != nil {
-				return PlayerResponse{}, fmt.Errorf("[Error]: cannot do request", err)
-		}
-
-		defer resp.Body.Close()
-		respApi, err := io.ReadAll(resp.Body)
-		if err != nil {
-				return PlayerResponse{}, err
-		}
-		log.Printf("[Call Api] Downloading JSON Api")
-		playerResponse := PlayerResponse{}
-
-		if resp.StatusCode == 400 {
-				fmt.Println(string(respApi))
-		}
-
-		err = json.Unmarshal(respApi, &playerResponse)
-		if err != nil {
-				return PlayerResponse{}, err
-		}
-
-		return playerResponse, nil
-}
-
-func NewPayload(clientName, vidioId string, signatureTimestamp int)Payload {
-		switch clientName {
-		case "ANDROID_VR", "android_vr":
-				return Payload{
-						Context: Context{
-								Client: Client {
-										ClientName: "ANDROID_VR",
-										ClientVersion: "1.71.26",
-										DeviceMake: "Oculus",
-										DeviceModel: "Quest 3",
-										AndroidSdkVersion: 32,
-										UserAgent:  "com.google.android.apps.youtube.vr.oculus/1.71.26 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
-										Hl: "en",
-										OsName: "Android",
-										OsVersion: "12L",
-										TimeZone: "UTC",
-										Utcoffsetminutes: 0,	
-								},
-						},
-						VideoId: vidioId,
-						RacyCheckOk: true,
-						ContentCheckOk: true,
-
-						PlaybackContext: &PlaybackContext{
-								ContentPlaybackContext: &ContentPlaybackContext{
-										Html5Preference: "HTML5_PREF_WANTS",
-										SignatureTimeStamp: signatureTimestamp,
-								},
-						},
-				}
-
-		case "WEB":
-				return Payload{
-						Context: Context{
-								Client: Client{
-										ClientName: "WEB",
-										ClientVersion: "2.20260114.08.00",
-										UserAgent:  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)",
-										Hl: "en",
-										TimeZone: "UTC",
-										Utcoffsetminutes: 0,
-								},
-						},
-						VideoId: vidioId,
-						PlaybackContext: &PlaybackContext{
-								ContentPlaybackContext: &ContentPlaybackContext{
-										Html5Preference: "HTML5_PREF_WANTS",
-										SignatureTimeStamp: signatureTimestamp,
-								},
-						},
-						ContentCheckOk: true,
-						RacyCheckOk: true,
-				}
-		case "ANDROID":
-				return Payload{
-						Context: Context{
-								Client: Client{
-										ClientName:    "ANDROID",
-										ClientVersion: "17.31.35",
-										UserAgent:     "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
-										Hl:            "en",
-										TimeZone:      "UTC",
-										Utcoffsetminutes: 0,
-								},
-						},
-						VideoId: vidioId,
-						ContentCheckOk: true,
-						RacyCheckOk: true,
-				}
-		default:
-				return Payload{}
-		}
-}
-
-func MakeApiRequest(ytData *YtMetaData, clientName string) (*http.Request, error) {
-		switch clientName {
-		case "ANDROID_VR":
-				payload := NewPayload(clientName, ytData.PlayerResponse.VideoDetails.VideoId, ytData.SignatureTimeStamp)
-				androidVrPayload, err := json.Marshal(payload)
-				if err != nil {
-						return nil, err
-				}
-				req, err := http.NewRequest("POST", ytData.ApiUrl, bytes.NewReader(androidVrPayload))
-				if err != nil {
-						return nil, err
-				}
-
-				req.Header.Set("User-Agent", "com.google.android.apps.youtube.vr.oculus/1.71.26" )
-				for i := range ytData.Cookies {
-						req.AddCookie(ytData.Cookies[i])
-				}
-				req.Header.Add("X-Youtube-Client-Name", "28")
-				req.Header.Add("X-Youtube-Client-Version", "1.71.26")
-				req.Header.Add("X-Goog-Visitor-Id", ytData.VisitorData)
-				req.Header.Set("Content-Type", "application/json")
-				req.Header.Set("Accept", "text/html,application/xhtml+xml,applicatio    n/xml;q=0.9,*/*;q=0.8")
-				req.Header.Set("Accept-Language", "en-US,en;q=0.5")
-				req.Header.Add("Origin", "https://www.youtube.com")
-				req.Header.Set("Content-Type", "application/json")
-
-				return req, nil
-
-		case "ANDROID":
-				payload := NewPayload(clientName, ytData.PlayerResponse.VideoDetails.VideoId, ytData.SignatureTimeStamp)
-
-				body, err := json.Marshal(payload)
-				if err != nil {
-						return nil, err
-				}
-
-				req, err := http.NewRequest("POST", ytData.ApiUrl, bytes.NewReader(body))
-				if err != nil {
-						return nil, err
-				}
-
-
-				req.Header.Set("User-Agent", "com.google.android.youtube/17.31.35")
-				req.Header.Set("Content-Type", "application/json")
-				req.Header.Set("X-Youtube-Client-Name", "3") // ANDROID = 3
-				req.Header.Set("X-Youtube-Client-Version", "17.31.35")
-
-				return req, nil
-
-		case "WEB":
-				payload := NewPayload(clientName, ytData.PlayerResponse.VideoDetails.VideoId, ytData.SignatureTimeStamp)
-
-				body, err := json.Marshal(payload)
-				if err != nil {
-						return nil, err
-				}
-
-				req, err := http.NewRequest("POST", ytData.ApiUrl, bytes.NewReader(body))
-				if err != nil {
-						return nil, err
-				}
-
-				for i := range ytData.Cookies {
-						req.AddCookie(ytData.Cookies[i])
-				}
-
-				req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15")
-				req.Header.Set("Content-Type", "application/json")
-				req.Header.Set("X-Youtube-Client-Name", "1") // ANDROID = 3
-				req.Header.Set("X-Youtube-Client-Version", "2")
-				req.Header.Set("X-Goog-Visitor-Id", ytData.VisitorData)
-				req.Header.Set("Origin", "https://www.youtube.com")
-
-				return req, nil
-		default:
-				return nil, fmt.Errorf("error: unknown clientName")
-		}
-}
-
-func pickBestAudio(formats []Formats) *Formats {
-		var best *Formats
-
-		for i := range formats {
-				f := &formats[i]
-
-				if !strings.Contains(f.MimeType, "audio/mp4") ||
-				!strings.Contains(f.MimeType, "mp4a") {
-						continue
-				}
-
-				if best == nil || f.Bitrate > best.Bitrate {
-						best = f
-				}
-		}
-
-		return best
-}
-
-func pickBestVideo(formats []Formats) *Formats {
-		var best *Formats
-
-		for i := range formats {
-				f := &formats[i]
-
-				if !strings.Contains(f.MimeType, "video/mp4") ||
-				!strings.Contains(f.MimeType, "avc1") {
-						continue
-				}
-
-				// target 1080p atau di bawahnya
-				if f.Height <= 1080 {
-						if best == nil || f.Height > best.Height {
-								best = f
-						}
-				}
-		}
-
-		return best
-}
-

@@ -2,13 +2,11 @@ package downloader
 
 import (
 		"fmt"
-		"goDownloader/config"
-		//"goDownloader/extractor"
-		"goDownloader/extractor/youtube"
-		"goDownloader/httpclient"
-		"goDownloader/progress"
+		"godl/config"
+		"godl/extractor/youtube"
+		"godl/httpclient"
+		"godl/progress"
 		"io"
-		"log"
 		"net/http"
 		"os"
 		"os/exec"
@@ -20,14 +18,18 @@ import (
 )
 
 
-type Downloader interface {
-		DownloadChunk(string, config.Config) error;
+type Downloader struct {
+		Client      *http.Client
+		configs			*config.Config
+		Url         string
+		outFile			string
+		config      config.DownloaderConfig
 }
 
 
 type ConfigDownloader struct {
-		Url 	string
-		Threads int
+		Url 			string
+		Threads 	int
 		DiskCache int
 }
 
@@ -43,9 +45,20 @@ var bufPool = sync.Pool{
 		New: func() interface{} { return make([]byte, 32*1024) }, // 32KB
 }
 
-func startGlobalDiskCache(file *os.File, chunkChan <-chan Chunk, maxCacheSize int, done chan<- bool) {
+func NewDownloader(cfg *config.Config) Downloader {
+		return Downloader{
+				configs: cfg,
+				config: *cfg.DownloaderCfg,
+				Url: cfg.Url,
+				outFile: cfg.OutFile,
+
+		}
+}
+
+func (d *Downloader)startGlobalDiskCache(file *os.File, chunkChan <-chan Chunk, done chan<- bool) {
 		cache := make(map[int64][]byte)
 		currentSize := 0
+		maxCacheSize := d.config.DiskCache
 
 		mergedData := make([]byte, maxCacheSize)
 
@@ -69,14 +82,14 @@ func startGlobalDiskCache(file *os.File, chunkChan <-chan Chunk, maxCacheSize in
 						copy(mergedData, firstChunk)
 						totalMerged := len(firstChunk)
 						nextOffset := startOffset + int64(len(cache[startOffset]))
-						//log.Printf("startOffset : %d, nextOffset : %d\n", startOffset, nextOffset)
+						//fmt.Printf("startOffset : %d, nextOffset : %d\n", startOffset, nextOffset)
 
 						j := i + 1
 						for j < len(offsets) && offsets[j] == nextOffset {
-								//log.Printf("offsets(j) == nextOffset : %v\n",offsets[j] == nextOffset)
+								//fmt.Printf("offsets(j) == nextOffset : %v\n",offsets[j] == nextOffset)
 								nextChunk := cache[offsets[j]]
 
-								if totalMerged + len(nextChunk) <= maxCacheSize {
+								if int64(totalMerged + len(nextChunk)) <= maxCacheSize {
 										copy(mergedData[totalMerged:], nextChunk)
 										totalMerged += len(nextChunk)
 
@@ -86,7 +99,7 @@ func startGlobalDiskCache(file *os.File, chunkChan <-chan Chunk, maxCacheSize in
 						}
 
 						file.WriteAt(mergedData[:totalMerged], startOffset)
-						//log.Printf("flushing %d to offset: %d\n", len(mergedData[:totalMerged]), startOffset)
+						//fmt.Printf("flushing %d to offset: %d\n", len(mergedData[:totalMerged]), startOffset)
 						i = j 
 				}
 
@@ -100,7 +113,7 @@ func startGlobalDiskCache(file *os.File, chunkChan <-chan Chunk, maxCacheSize in
 				cache[chunk.Offset] = chunk.Data
 				currentSize += len(chunk.Data)
 
-				if currentSize >= maxCacheSize {
+				if int64(currentSize) >= maxCacheSize {
 						flush()
 				}
 		}
@@ -111,7 +124,7 @@ func startGlobalDiskCache(file *os.File, chunkChan <-chan Chunk, maxCacheSize in
 		done <- true
 }
 
-func downloadAll(client *http.Client, url string, file *os.File, downloaded *int64, chunkChan chan<- Chunk) error {
+func (d *Downloader)downloadAll(client *http.Client, url string, file *os.File, downloaded *int64, chunkChan chan<- Chunk) error {
 
 		maxRetry := 5
 
@@ -121,7 +134,7 @@ func downloadAll(client *http.Client, url string, file *os.File, downloaded *int
 
 				resp, err := client.Do(req)
 				if err != nil {
-						log.Println("retry (request error):", err)
+						fmt.Println("retry (request error):", err)
 						time.Sleep(time.Second)
 						continue
 				}
@@ -150,7 +163,7 @@ func downloadAll(client *http.Client, url string, file *os.File, downloaded *int
 						}
 
 						if err != nil {
-								log.Println("connection error:", err)
+								fmt.Println("connection error:", err)
 								resp.Body.Close()
 								time.Sleep(time.Second)
 								break // keluar loop read → retry request
@@ -162,7 +175,7 @@ func downloadAll(client *http.Client, url string, file *os.File, downloaded *int
 }
 
 
-func downloadChunk(client *http.Client, url string, start, end int64, file *os.File, downloaded *int64, chunkChan chan<- Chunk) error {
+func (d *Downloader)downloadChunk(client *http.Client, url string, start, end int64, file *os.File, downloaded *int64, chunkChan chan<- Chunk) error {
 		maxRetry := 5
 		currentStart := start
 
@@ -173,7 +186,7 @@ func downloadChunk(client *http.Client, url string, start, end int64, file *os.F
 
 				resp, err := client.Do(req)
 				if err != nil {
-						log.Println("retry (request error):", err)
+						fmt.Println("retry (request error):", err)
 						time.Sleep(time.Second)
 						continue
 				}
@@ -208,7 +221,7 @@ func downloadChunk(client *http.Client, url string, start, end int64, file *os.F
 						}
 
 						if err != nil {
-								log.Println("connection error, retrying from:", currentStart, err)
+								fmt.Println("connection error, retrying from:", currentStart, err)
 								resp.Body.Close()
 								time.Sleep(time.Second)
 								break // keluar loop read → retry request
@@ -219,23 +232,15 @@ func downloadChunk(client *http.Client, url string, start, end int64, file *os.F
 		return fmt.Errorf("chunk failed after retries")
 }
 
+func (d *Downloader) downloadAudioAndVideo(target youtube.AudioAndVideo) error {
+		targets := []youtube.Target{target.Audio, target.Video}
 
-func downloadYoutubeVideo(url string, config config.Config) error {
-		target, err := youtube.ExtractUrl(url, config)
-		if err != nil {
-				return err
-		}
-
-		for idx := range target {
-				t := target[idx]
+		for idx := range targets {
+				t := targets[idx]
 
 				cl := t.FileSize
-				threads := calcThreads(cl)
-				threads = 4;
-				if config.Threads != 4 {
-						threads = config.Threads
-				}
-				log.Printf("Threads: %d\n", threads)
+				threads := d.calcThreads(cl)
+				threads = d.config.Gorountines;
 
 				f, err := os.OpenFile(t.FileName, os.O_CREATE|os.O_RDWR, 0600)
 				if err != nil {
@@ -244,13 +249,7 @@ func downloadYoutubeVideo(url string, config config.Config) error {
 				chunkChan := make(chan Chunk, 100)
 				doneWriter := make(chan bool)
 
-				go startGlobalDiskCache(f, 
-																chunkChan,
-																config.DiskCache,
-																doneWriter,
-																)
-
-				defer f.Close()
+				go d.startGlobalDiskCache(f, chunkChan,	doneWriter)
 
 				f.Truncate(cl)
 
@@ -259,7 +258,7 @@ func downloadYoutubeVideo(url string, config config.Config) error {
 				chunk := cl / int64(threads)
 
 				var downloaded int64 = 0
-				log.Printf("Downloading: %s\n", t.FileName)
+				fmt.Printf("[Downloader] Downloading: %s\n", t.FileName)
 				timeStart := time.Now()
 
 				for i := 0; i < threads; i++ {
@@ -274,7 +273,8 @@ func downloadYoutubeVideo(url string, config config.Config) error {
 
 						go func(start, end int64) {
 								defer wg.Done()
-								downloadChunk(downloaderClient, t.Url, start, end, f, &downloaded, chunkChan)
+								fmt.Println("gorountine: ", i, ", start: ", start, ", end: ", end)
+								d.downloadChunk(downloaderClient, t.Url, start, end, f, &downloaded, chunkChan)
 						}(start, end)
 				}
 
@@ -283,22 +283,27 @@ func downloadYoutubeVideo(url string, config config.Config) error {
 				wg.Wait()
 				close(chunkChan)
 				<-doneWriter
-				log.Printf("[Info] Downloaded %s, size: %d, ", t.FileName, cl)
-				log.Printf("in: %s\n", time.Since(timeStart))
+				fmt.Printf("\n[Info] Downloaded %s, size: %d, ", t.FileName, cl)
+				fmt.Printf("in: %s\n", time.Since(timeStart))
+				f.Close()
 		}	
-		log.Printf("Merging files with ffmpeg: %s %s\n", target[0].FileName, target[1].FileName)
+		fmt.Printf("[Downloader] Merging files with ffmpeg: %s %s\n", targets[0].FileName, targets[1].FileName)
 
-		var outputFile string = config.OutFile
+		var outputFile string = d.outFile
+		if outputFile == "[godl]videoplayback.mp4" {
+			part := strings.Split(target.Audio.FileName, ".")
+			outputFile = part[0] + ".mp4"
+		}
 
-		_,err = os.Stat(outputFile)
+		_,err := os.Stat(outputFile)
 		if os.IsExist(err){
 				outputFile += time.DateTime
 		}
 
 		cmd := exec.Command(
 				"ffmpeg",
-				"-i", target[0].FileName,
-				"-i", target[1].FileName,
+				"-i", targets[0].FileName,
+				"-i", targets[1].FileName,
 				"-c:v", "copy",
 				"-c:a", "aac",
 				outputFile,
@@ -306,23 +311,41 @@ func downloadYoutubeVideo(url string, config config.Config) error {
 
 		err = cmd.Run()
 		if err != nil {
-				log.Printf("error while merging file: %s\n", err)
+				fmt.Printf("error while merging file: %s\n", err)
+				return err
 		}
 
-		cmd = exec.Command("rm", target[0].FileName, target[1].FileName)
-
-		//cmd.Stderr = os.Stderr
-
-		err = cmd.Run()
-		log.Printf("removing audio & video files\n")
+		fmt.Printf("[Info] Removing audio & video files\n")
+		err = os.Remove(target.Audio.FileName)
 		if err != nil {
-				log.Printf("error while removing files: %s\n", err)
+				fmt.Printf("error while removing file: %s, err: %s\n", target.Audio.FileName, err.Error())
+		}
+
+		err = os.Remove(target.Video.FileName)
+		if err != nil {
+				fmt.Printf("error while removing file: %s, err: %s\n", target.Video.FileName, err.Error())
 		}
 
 		return nil
 }
 
-func getHeaderResponse(url string) (*http.Response, error) {
+
+func (d *Downloader)downloadYoutubeVideo(url string, config *config.Config) error {
+		ytExtractor := youtube.NewYoutubeExtractor(config)
+		target, err := ytExtractor.ExtractUrl(url)
+		if err != nil {
+				return err
+		}
+
+		switch target.(type) {
+		case youtube.AudioAndVideo:
+				return d.downloadAudioAndVideo(target.(youtube.AudioAndVideo))
+		}
+
+		return nil
+}
+
+func (d *Downloader)getHeaderResponse(url string) (*http.Response, error) {
 		req, err := httpclient.NewDefaultWebRequest(url)
 		req.Method = "HEAD"
 		if err != nil {
@@ -339,9 +362,9 @@ func getHeaderResponse(url string) (*http.Response, error) {
 		return resp, nil
 }
 
-func downloadDirectUrl(url string, config config.Config) error {
+func (d *Downloader)downloadDirectUrl(url string, config *config.Config) error {
 
-		resp, err := getHeaderResponse(url)
+		resp, err := d.getHeaderResponse(url)
 		if err != nil {
 				return fmt.Errorf("error while requesting header response: %s\n", err)
 		}
@@ -372,75 +395,76 @@ func downloadDirectUrl(url string, config config.Config) error {
 		}
 
 		if !supportRanges {
-				log.Printf("Server does not support paralel request, downloading all file in 1 connection")
-				go startGlobalDiskCache(f, chunkChan, config.DiskCache, doneWriter)
+				fmt.Printf("Server does not support paralel request, downloading all file in 1 connection")
+				go d.startGlobalDiskCache(f, chunkChan, doneWriter)
 				go progress.ShowProgress(contentLength, &downloaded)
 				timeStart := time.Now()
-				err = downloadAll(downloaderClient, url, f, &downloaded, chunkChan)
+				err = d.downloadAll(downloaderClient, url, f, &downloaded, chunkChan)
 				if err != nil {
 						return err
 				}
 
 				close(chunkChan)
 				<-doneWriter
-				log.Printf("[Info] Downloaded: %s in %s\n", config.OutFile, time.Since(timeStart))
+				fmt.Printf("[Info] Downloaded: %s in %s\n", config.OutFile, time.Since(timeStart))
 
 
 		} else {
-				log.Printf("Downloading %s in %d connection\n", f.Name(), config.Threads)
-				go startGlobalDiskCache(f, chunkChan, config.DiskCache, doneWriter)	
+				fmt.Printf("[Downloader] Downloading %s in %d connection\n", f.Name(), d.config.Gorountines)
+				go d.startGlobalDiskCache(f, chunkChan, doneWriter)	
 				var wg sync.WaitGroup
 				timeStart := time.Now()
-				for i := 0; i < config.Threads; i++ {
+				for i := 0; i < d.config.Gorountines; i++ {
 						wg.Add(1)
-						chunk := contentLength / int64(config.Threads)
+						chunk := contentLength / int64(d.config.Gorountines)
 						start := chunk * int64(i)
 						end := start + chunk - 1
 
-						if i == config.Threads - 1 { end = contentLength }
+						if i == d.config.Gorountines - 1 { end = contentLength }
 
 						go func(start, end int64){
-								err = downloadChunk(
-																		downloaderClient,
-																		url, 
-																		start,
-																		end, 
-																		f,
-																		&downloaded,
-																		chunkChan,
-																		)
+								err = d.downloadChunk(
+										downloaderClient,
+										url, 
+										start,
+										end, 
+										f,
+										&downloaded,
+										chunkChan,
+								)
 
-						defer wg.Done()
-				}(start, end)
+								defer wg.Done()
+						}(start, end)
 
-				if err != nil {
-						return err
+						if err != nil {
+								return err
+						}
 				}
+				go progress.ShowProgress(contentLength, &downloaded)
+				wg.Wait()
+				close(chunkChan)
+				<-doneWriter
+
+				fmt.Printf("[Info] Downloaded %s in %s\n", f.Name(), time.Since(timeStart))
 		}
-		go progress.ShowProgress(contentLength, &downloaded)
-		wg.Wait()
-		close(chunkChan)
-		<-doneWriter
 
-		log.Printf("Downloaded %s in %s\n", f.Name(), time.Since(timeStart))
+
+		return nil
 }
 
 
-return nil
-}
-
-
-func StartDownload(url string, config config.Config) error {
+func (d *Downloader)StartDownload(url string, config *config.Config) error {
 		if strings.Contains(url, "youtube") || strings.Contains(url, "youtu.be"){
-				return downloadYoutubeVideo(url, config)
+				return d.downloadYoutubeVideo(url, config)
 		} 
-		log.Printf("Unknown url: trying to download file directly")
 
-		return downloadDirectUrl(url, config)
+		fmt.Printf("[Downloader] Unknown url: trying to download file directly")
+
+		return d.downloadDirectUrl(url, config)
 }
 
 
-func calcThreads(fileSize int64) int {
+func (d *Downloader)calcThreads(fileSize int64) int {
 		const chunkSize = 2 * 1024 * 1024 // 2MB
 
 		threads := int(fileSize / chunkSize)

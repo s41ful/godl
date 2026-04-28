@@ -5,18 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 )
 
-func CallApi(ytData *YtMetaData)(PlayerResponse, error){
-		req, err := MakeApiRequest(ytData, "ANDROID_VR")
+func (yt *YoutubeExtractor) CallApi(ytData *YtMetaData, ytClient string)(PlayerResponse, error){
+		req, err := yt.MakeApiRequest(ytData, ytClient)
 		if err != nil {
 				return PlayerResponse{}, err
 		}
-
-		//log.SetFlags(log.LstdFlags | log.Lshortfile)
-		log.Printf("[Call Api] sending request\n")
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -28,7 +24,8 @@ func CallApi(ytData *YtMetaData)(PlayerResponse, error){
 		if err != nil {
 				return PlayerResponse{}, err
 		}
-		log.Printf("[Call Api] Downloading JSON Api")
+
+		fmt.Printf("[Call Api] Downloading %s JSON Api\n", ytClient)
 		playerResponse := PlayerResponse{}
 
 		if resp.StatusCode == 400 {
@@ -43,7 +40,7 @@ func CallApi(ytData *YtMetaData)(PlayerResponse, error){
 		return playerResponse, nil
 }
 
-func NewPayload(clientName, vidioId string, signatureTimestamp int)Payload {
+func (yt *YoutubeExtractor) NewPayload(clientName, vidioId string, signatureTimestamp int)Payload {
 		switch clientName {
 		case "ANDROID_VR", "android_vr":
 				return Payload{
@@ -117,10 +114,10 @@ func NewPayload(clientName, vidioId string, signatureTimestamp int)Payload {
 		}
 }
 
-func MakeApiRequest(ytData *YtMetaData, clientName string) (*http.Request, error) {
+func (yt *YoutubeExtractor) MakeApiRequest(ytData *YtMetaData, clientName string) (*http.Request, error) {
 		switch clientName {
 		case "ANDROID_VR":
-				payload := NewPayload(clientName, ytData.PlayerResponse.VideoDetails.VideoId, ytData.SignatureTimeStamp)
+				payload := yt.NewPayload(clientName, ytData.PlayerResponse.VideoDetails.VideoId, ytData.SignatureTimeStamp)
 				androidVrPayload, err := json.Marshal(payload)
 				if err != nil {
 						return nil, err
@@ -146,7 +143,7 @@ func MakeApiRequest(ytData *YtMetaData, clientName string) (*http.Request, error
 				return req, nil
 
 		case "ANDROID":
-				payload := NewPayload(clientName, ytData.PlayerResponse.VideoDetails.VideoId, ytData.SignatureTimeStamp)
+				payload := yt.NewPayload(clientName, ytData.PlayerResponse.VideoDetails.VideoId, ytData.SignatureTimeStamp)
 
 				body, err := json.Marshal(payload)
 				if err != nil {
@@ -167,7 +164,7 @@ func MakeApiRequest(ytData *YtMetaData, clientName string) (*http.Request, error
 				return req, nil
 
 		case "WEB":
-				payload := NewPayload(clientName, ytData.PlayerResponse.VideoDetails.VideoId, ytData.SignatureTimeStamp)
+				payload := yt.NewPayload(clientName, ytData.PlayerResponse.VideoDetails.VideoId, ytData.SignatureTimeStamp)
 
 				body, err := json.Marshal(payload)
 				if err != nil {

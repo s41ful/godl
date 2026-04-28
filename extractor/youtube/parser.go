@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+type HlsSegmentUrl string
+
 
 type HlsFormat struct {
 	bandwith			int
