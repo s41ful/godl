@@ -1,3 +1,3 @@
-module goDownloader
+module godl
 
 go 1.25.4
