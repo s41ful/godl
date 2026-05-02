@@ -51,7 +51,7 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
     return resp, err
 }
 
-func dumpRequest(req *http.Request, withBody bool) string {
+func DumpRequest(req *http.Request, withBody bool) string {
 	dump, err := httputil.DumpRequestOut(req, withBody)
 	if err != nil {
 		return "dump error:" + err.Error()
@@ -60,7 +60,7 @@ func dumpRequest(req *http.Request, withBody bool) string {
 }
 
 
-func dumpResponseHeader(resp *http.Response) string {
+func DumpResponseHeader(resp *http.Response) string {
 	dump, err := httputil.DumpResponse(resp, false)
 	if err != nil {
 		return "dump error: " + err.Error() 
@@ -104,9 +104,9 @@ type LogTransport struct {
 
 func (l *LogTransport)RoundTrip(r *http.Request) (*http.Response, error){
 	if r.Body == nil {
-		log.Printf("SENDING REQUEST:\n%s\n", dumpRequest(r, false))
+		log.Printf("SENDING REQUEST:\n%s\n", DumpRequest(r, false))
 	} else {
-		log.Printf("SENDING REQUEST:\n%s\n", dumpRequest(r, true))
+		log.Printf("SENDING REQUEST:\n%s\n", DumpRequest(r, true))
 	}
 
 	resp, err := l.Base.RoundTrip(r)
@@ -114,7 +114,7 @@ func (l *LogTransport)RoundTrip(r *http.Request) (*http.Response, error){
 		log.Printf("ERROR: %s\n", err)
 		return resp, err
 	}
-	log.Printf("RECEIVING HEADERS:\n%s\n", dumpResponseHeader(resp))
+	log.Printf("RECEIVING HEADERS:\n%s\n", DumpResponseHeader(resp))
 
 	return resp, err
 }

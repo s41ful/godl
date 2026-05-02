@@ -4,7 +4,6 @@ import (
 	"strings"
 	"fmt"
 	"regexp"
-	"log"
 )
 
 func extractJSON(s string, start int) (string, error) {
@@ -86,7 +85,6 @@ func getApiKey(html string) string {
 		match := re.FindStringSubmatch(html)
 
 		if len(match) > 1 {
-				log.Printf("Api key found\n")
 				return match[1]
 		}
 
@@ -132,4 +130,16 @@ func pickBestVideo(formats []Formats) *Formats {
 		}
 
 		return best
+}
+
+func pickBestThumbnail(thumbnails []Thumbnail) Thumbnail {
+		var bthumbnail Thumbnail	
+
+		for _, el := range thumbnails {
+			if el.Height >= bthumbnail.Height {
+					bthumbnail = el
+			}
+		}
+
+		return bthumbnail
 }

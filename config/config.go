@@ -3,18 +3,11 @@ package config
 import (
 		"flag"
 		"fmt"
-		"strconv"
-)
-
-const (
-		MB = 1024 * 1025
-		DEFAULT_DISK_CACHE = 16 * MB
 )
 
 type DownloaderConfig struct {
 		MaxRetries 					int
 		Gorountines					int
-		DiskCache 					int64
 }
 
 type ExtractorConfig struct {
@@ -33,20 +26,6 @@ type Config struct {
 		OutFile 							string
 }
 
-func parseStrDiskCache(diskCache string) int64 {
-		if diskCache[len(diskCache) - 2 :] == "MB" {
-				dc, err := strconv.ParseInt(diskCache[ : len(diskCache) - 2], 10, 64)
-				if err != nil {
-						fmt.Printf("error: cannot parse %s into integer, %s\n", diskCache[: len(diskCache) - 2], err.Error())
-						return DEFAULT_DISK_CACHE
-				}
-
-				return dc * MB
-		}
-
-		return DEFAULT_DISK_CACHE
-}
-
 func ParseArgs() Config {
 		var cfg = Config {
 				DownloaderCfg: &DownloaderConfig{},
@@ -59,7 +38,6 @@ func ParseArgs() Config {
 		//Downloader Config
 		flag.IntVar(&cfg.DownloaderCfg.Gorountines, "N", 4, "Total Gorountines to download url (server suppport range request)")
 		flag.IntVar(&cfg.DownloaderCfg.MaxRetries, "R", 5, "Total retries downloader to retry if there is an error")
-		diskCache := flag.String("disk-cache", "16MB", "Buffer download in RAM before wrtiting into disk (default 16MB)")
 
 		//Extractor Config
 		flag.IntVar(&cfg.ExtractorConfig.MaxRetries, "extractor-retries", 3, "Total retries extractor do if connnecton error")
@@ -69,7 +47,6 @@ func ParseArgs() Config {
 
 		flag.Parse()
 
-		cfg.DownloaderCfg.DiskCache = parseStrDiskCache(*diskCache)
 
 		args := flag.Args()
 		if len(args) < 1 {

@@ -4,23 +4,11 @@ import (
 	"fmt"
 	"godl/config"
 	"godl/downloader"
-	"log"
 	"os"
 )
 
-/*
-Config :
-	-v :  Verbose
-	-o <OutFile>> : outputFile
-	--print-traffic :  Print  traffic
-	--debug :    Debug = truee
-
-
-*/
-
-
 func main(){
-	log.Printf("args: %v\n", os.Args)
+	fmt.Printf("args: %v\n", os.Args)
 
 	var configs config.Config
 
@@ -29,8 +17,8 @@ func main(){
 		return
 	}
 
-	fmt.Printf("configs: %+v\n", configs)
-	fmt.Printf("downloader configs: %v\n", configs.DownloaderCfg)
+	fmt.Printf("[Info] configs: %+v, ", configs)
+	fmt.Printf("downloader configs: %+v, ", configs.DownloaderCfg)
 	fmt.Printf("extractor configs: %v\n", configs.ExtractorConfig)
 
 	dl := downloader.NewDownloader(&configs)
