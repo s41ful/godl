@@ -94,6 +94,9 @@ type VideoDetails struct {
 		VideoId 						string		`json:"videoId"`
 		LengthSeconds 			string		`json:"lengthSeconds"`
 		IsPrivate						bool			`json:"isPrivate"`
+		Thumbnail           struct {
+				Thumbnails      []Thumbnail  `json:"thumbnails"`
+		} `json:"thumbnail"`
 }
 
 type Formats struct {
@@ -118,6 +121,12 @@ type Formats struct {
 		Height 							int 			`json:"height"`
 }
 
+type Thumbnail struct {
+	Url 						string 					`json:"url"`
+	Width 					int 						`json:"width"`
+	Height 					int 						`json:"height"`
+}
+
 type YoutubeExtractor struct {
 	configs        		*config.Config 
 	config  					config.ExtractorConfig
@@ -133,7 +142,6 @@ func NewYoutubeExtractor(cfg *config.Config) *YoutubeExtractor {
 	return &YoutubeExtractor{
 		configs: 			cfg,
 		config: 			*cfg.ExtractorConfig,	
-
 	}
 }
 
@@ -177,7 +185,7 @@ func (yt *YoutubeExtractor) ExtractUrl(url string) (ExtractedUrl, error) {
 		}
 
 
-		fmt.Printf("[Extractor] getting downloading format %d+%d\n",bestAudio.Itag, bestVideo.Itag)
+		fmt.Printf("[Extractor] getting format %d+%d\n",bestAudio.Itag, bestVideo.Itag)
 
 		return AudioAndVideo{
 			Audio: Target{
@@ -188,7 +196,7 @@ func (yt *YoutubeExtractor) ExtractUrl(url string) (ExtractedUrl, error) {
 			Video: Target{
 				FileName: 		videoFileName,
 				FileSize: 		videoSize,
-				Url: 					bestAudio.Url,	
+				Url: 					bestVideo.Url,	
 			},
 
 		}, nil

@@ -36,6 +36,7 @@ func (yt *YoutubeExtractor) CallApi(ytData *YtMetaData, ytClient string)(PlayerR
 		if err != nil {
 				return PlayerResponse{}, err
 		}
+		fmt.Printf("Tumbnails: %+v\n", playerResponse.VideoDetails.Thumbnail)
 
 		return playerResponse, nil
 }
