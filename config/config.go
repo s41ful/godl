@@ -1,20 +1,21 @@
 package config
 
 import (
-		"flag"
-		"fmt"
+	"flag"
+	"fmt"
+	"os"
 )
 
 type DownloaderConfig struct {
-		MaxRetries 					int
-		Gorountines					int
+		MaxRetries 						int
+		Gorountines						int
 }
 
 type ExtractorConfig struct {
-		MaxRetries 					int
-		PrintTraffic				bool
-		EmbedSubtitles			bool
-		EmbedThumbnail			bool
+		MaxRetries 						int
+		PrintTraffic					bool
+		EmbedSubtitles				bool
+		EmbedThumbnail				bool
 }
 
 type Config struct {
@@ -24,6 +25,7 @@ type Config struct {
 		Debug 								bool
 		Quiet									bool
 		OutFile 							string
+		Directory							string
 }
 
 func ParseArgs() Config {
@@ -32,11 +34,14 @@ func ParseArgs() Config {
 				ExtractorConfig: &ExtractorConfig{},
 		}
 
+		currentDir, _ := os.Getwd()
+
 		//General Config
 		flag.StringVar(&cfg.OutFile, "o", "[godl]videoplayback.mp4", "Name output file")
+		flag.StringVar(&cfg.Directory, "d", currentDir, "Specified the directory for downloaded file")
 
 		//Downloader Config
-		flag.IntVar(&cfg.DownloaderCfg.Gorountines, "N", 4, "Total Gorountines to download url (server suppport range request)")
+		flag.IntVar(&cfg.DownloaderCfg.Gorountines, "N", 4, "Total Gorountines to download url (if server suppport range request)")
 		flag.IntVar(&cfg.DownloaderCfg.MaxRetries, "R", 5, "Total retries downloader to retry if there is an error")
 
 		//Extractor Config

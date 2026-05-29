@@ -91,7 +91,6 @@ func ShowProgress(total int64, downloaded *int64, doneDownload chan bool) {
 				case <-sigCh:
 						width = getWidth()
 				case <-doneDownload:
-						renderBar(lastTime, &total, total, lastBytes, width)
 						return
 				case <-ticker.C:
 						//now := time.Now()

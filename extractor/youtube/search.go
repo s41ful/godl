@@ -1,10 +1,29 @@
 package youtube
 
 import (
-	"strings"
+	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 )
+
+func getUrlFromVideoID(videoID string) string {
+	return "https://www.youtube.com/watch?v=" + videoID
+}
+
+func getUrlType(url string) (UrlType, error) {
+	match := UrlIsPlaylist.FindStringSubmatch(url)
+	if len(match) > 1 {
+		return PLAYLIST_URL, nil
+	}
+	
+	match = UrlIsVideo.FindStringSubmatch(url)
+	if len(match) > 1 {
+		return VIDEO_URL, nil
+	}
+
+	return 0, errors.New(ErrInvalidYoutubeUrl)
+}
 
 func extractJSON(s string, start int) (string, error) {
 		var count int
@@ -31,7 +50,6 @@ func extractJSON(s string, start int) (string, error) {
 
 				if !inString {
 						if c == '\r' || c == '\n' {
-								fmt.Println("Index :", i)
 						}
 						if c == '{' {
 								count++

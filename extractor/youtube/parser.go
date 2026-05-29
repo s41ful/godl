@@ -12,12 +12,12 @@ type HlsSegmentUrl string
 
 type HlsFormat struct {
 	bandwith			int
-	codecs        [2]string
+	codecs        		[2]string
 	width 				int
 	height				int
 	subtitles			string
-	frameRate     int
-	url           string
+	frameRate     		int
+	url           		string
 }
 
 func ParseHlsPlaylist(hlsPlaylist string) []HlsFormat {
@@ -91,8 +91,6 @@ func GetSegmentsFromMediaPlaylist(mediaPlaylist string) []HlsSegmentUrl {
 
 	return segments
 }
-
-
 
 func ParseRangeFromURL(u string) (int64, int64, error) {
 	var re = regexp.MustCompile(`/begin/(\d+)/len/(\d+)/`)

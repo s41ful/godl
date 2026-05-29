@@ -11,6 +11,7 @@
 
 # Go workspace file
 go.work
+godl
 
 # Folder vendor (jika kamu tidak ingin menyimpannya di git)
 vendor/

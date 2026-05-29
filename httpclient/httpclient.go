@@ -1,10 +1,10 @@
 package httpclient
 
 import (
-	"log"
-	"net/http/httputil"
+	"fmt"
 	"io"
 	"net/http"
+	"net/http/httputil"
 	"time"
 )
 
@@ -21,10 +21,6 @@ type RetryTransport struct {
     Delay      time.Duration
 }
 
-
-var ExtracrorClient = &http.Client{}
-
-
 func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
     var resp *http.Response
     var err error
@@ -35,12 +31,12 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
         if err == nil && resp.StatusCode < 500 {
             return resp, nil
         }
-	log.Printf("Request Failed retrying: %d\n", i)
+
+				fmt.Printf("Request Failed retrying: %d\n", i)
         if resp != nil && resp.Body != nil {
             resp.Body.Close()
         }
-
-        // retry terakhir → return error
+// retry terakhir → return error
         if i == t.MaxRetries {
             break
         }
@@ -59,7 +55,6 @@ func DumpRequest(req *http.Request, withBody bool) string {
 	return string(dump)
 }
 
-
 func DumpResponseHeader(resp *http.Response) string {
 	dump, err := httputil.DumpResponse(resp, false)
 	if err != nil {
@@ -69,17 +64,6 @@ func DumpResponseHeader(resp *http.Response) string {
 	return string(dump)
 }
 		
-
-var DownloaderClient = &http.Client{
-	Transport: &RetryTransport{
-		Base: tr,
-		MaxRetries: 3,
-		Delay: 1 * time.Second,
-	},
-}
-
-
-
 func NewRequest(method, url string, body io.Reader) (*http.Request, error){
 	return http.NewRequest(method, url, body)
 }
@@ -98,39 +82,47 @@ func NewDefaultWebRequest(url string) (*http.Request, error) {
 
 
 type LogTransport struct {
-	Base http.RoundTripper
-	Debug bool
+	Base 				http.RoundTripper
+	MaxRetries			int
+	Delay				time.Duration
 }
 
 func (l *LogTransport)RoundTrip(r *http.Request) (*http.Response, error){
 	if r.Body == nil {
-		log.Printf("SENDING REQUEST:\n%s\n", DumpRequest(r, false))
+		fmt.Printf("SENDING REQUEST:\n%s\n", DumpRequest(r, false))
 	} else {
-		log.Printf("SENDING REQUEST:\n%s\n", DumpRequest(r, true))
+		fmt.Printf("SENDING REQUEST:\n%s\n", DumpRequest(r, true))
 	}
 
 	resp, err := l.Base.RoundTrip(r)
 	if err != nil {
-		log.Printf("ERROR: %s\n", err)
+		fmt.Printf("ERROR: %s\n", err)
 		return resp, err
 	}
-	log.Printf("RECEIVING HEADERS:\n%s\n", DumpResponseHeader(resp))
+	fmt.Printf("RECEIVING HEADERS:\n%s\n", DumpResponseHeader(resp))
 
 	return resp, err
 }
 
 
-func NewClient(debugTraffic bool) *http.Client {
+func NewClient(debugTraffic bool, maxRetries int) *http.Client {
 	if debugTraffic {
 		return &http.Client{
 		
 			Transport: &LogTransport{
-				Base: tr,
-				Debug: true,
+				Base: 			tr,
+				MaxRetries: 	maxRetries,
+				Delay: 			1 * time.Second,
 			},
 		}
 	} else {
-		return &http.Client{}
+		return &http.Client{
+			Transport: &RetryTransport{
+				Base: 			tr,
+				MaxRetries: 	maxRetries,
+				Delay: 			1 * time.Second,
+			},
+		}
 	}
 }
 

@@ -14,9 +14,9 @@ func (yt *YoutubeExtractor) CallApi(ytData *YtMetaData, ytClient string)(PlayerR
 				return PlayerResponse{}, err
 		}
 
-		resp, err := client.Do(req)
+		resp, err := yt.client.Do(req)
 		if err != nil {
-				return PlayerResponse{}, fmt.Errorf("[Error]: cannot do request", err)
+				return PlayerResponse{}, fmt.Errorf("[Error]: cannot do request, %s", err.Error())
 		}
 
 		defer resp.Body.Close()
@@ -36,7 +36,7 @@ func (yt *YoutubeExtractor) CallApi(ytData *YtMetaData, ytClient string)(PlayerR
 		if err != nil {
 				return PlayerResponse{}, err
 		}
-		fmt.Printf("Tumbnails: %+v\n", playerResponse.VideoDetails.Thumbnail)
+		//fmt.Printf("Tumbnails: %+v\n", playerResponse.VideoDetails.Thumbnail)
 
 		return playerResponse, nil
 }
