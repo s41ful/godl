@@ -1,11 +1,11 @@
 package postproccessor
 
 import (
-	"fmt"
 	"godl/core"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"godl/logger"
 )
 
 type Postprocessor interface {
@@ -13,7 +13,9 @@ type Postprocessor interface {
 	Process(item *core.DownloadItem) error
 }
 
-type FFmpegMergePP struct {}
+type FFmpegMergePP struct {
+	logger 			*logger.Logger
+}
 
 func (pp *FFmpegMergePP) Support(downloadedItem *core.DownloadItem) bool {
 	var haveAudio bool
@@ -30,6 +32,9 @@ func (pp *FFmpegMergePP) Support(downloadedItem *core.DownloadItem) bool {
 }
 
 func (pp *FFmpegMergePP) Process(downloadedItem *core.DownloadItem) error {
+	pp.logger = logger.NewLogger("info")
+	pp.logger.SetFlags(0)
+
 	var outputFile string = downloadedItem.OutputFile
 	var err error
 
@@ -47,8 +52,7 @@ func (pp *FFmpegMergePP) Process(downloadedItem *core.DownloadItem) error {
 		}
 	}
 
-	fmt.Printf("[Downloader] Merging files with ffmpeg: %s+%s -> %s\n", audioPath, videoPath, outputFile)
-
+	pp.logger.Printf(logger.LOG_LEVEL_INFO, "[Downloader] Merging files with ffmpeg: %s + %s -> %s\n", audioPath, videoPath, outputFile)
 	cmd := exec.Command(
 		"ffmpeg",
 		"-i", audioPath,
@@ -59,25 +63,25 @@ func (pp *FFmpegMergePP) Process(downloadedItem *core.DownloadItem) error {
 
 	err = cmd.Run()
 	if err != nil {
-		fmt.Printf("FFmpeg: error while merging file: %s\n", err)
+		pp.logger.Printf(logger.LOG_LEVEL_INFO, "FFmpeg: error while merging file: %s\n", err)
 		return err
 	}
 
-	fmt.Printf("[Info] Removing audio & video files\n")
+	pp.logger.Printf(logger.LOG_LEVEL_INFO, "[Info] Removing audio & video files\n")
 
 	for _, media := range downloadedItem.Media {
 		err = os.Remove(media.FileName)
 		if err != nil {
-			fmt.Printf("[Info] error while removing file: %s, err: %s\n", media.FileName, err.Error())	
+			pp.logger.Printf(logger.LOG_LEVEL_INFO, "[Info] error while removing file: %s, err: %s\n", media.FileName, err.Error())	
 		}
 	}
 
 	currentDir, err := os.Getwd()
 	if currentDir != downloadedItem.OutputPath {
-		fmt.Printf("[Downloader] moving %s to -> %s\n", outputFile, filepath.Join(downloadedItem.OutputFile, outputFile))
+		pp.logger.Printf(logger.LOG_LEVEL_INFO, "[Downloader] moving %s to -> %s\n", outputFile, filepath.Join(downloadedItem.OutputFile, outputFile))
 		err = os.Rename(outputFile, filepath.Join(downloadedItem.OutputFile, outputFile))
 		if err != nil {
-			fmt.Printf("error while moving file: %s\n", err.Error())
+			pp.logger.Printf(logger.LOG_LEVEL_INFO, "error while moving file: %s\n", err.Error())
 			return err
 		}
 	}

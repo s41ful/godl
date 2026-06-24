@@ -3,8 +3,9 @@ package youtube
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"godl/httpclient"
+	"godl/logger"
 	"io"
 )
 
@@ -27,22 +28,23 @@ func (yt *YoutubeExtractor) GetListVideoFromPlaylist(playlistUrl string) (*Playl
 
 	req, err := httpclient.NewDefaultWebRequest(playlistUrl)
 	if err != nil {
-		return nil, fmt.Errorf("error while generating request for url: %s, error: %s\n", playlistUrl, err.Error())
+		return nil, errors.New("error while generating request for url: " + playlistUrl + "error: " + err.Error())
 	}
 
 	resp, err := yt.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error while requesting to playlistUrl: %s, error: %s\n", playlistUrl, err.Error())
+		return nil, errors.New("error while requesting to playlistUrl: " + playlistUrl + "error: " + err.Error())
 	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error while reading from connection %s, error: %s\n", playlistUrl, err.Error())
+		return nil, errors.New("error while reading from connection " + playlistUrl + "error: " + err.Error())
 	}
 
 	idx := bytes.Index(data, []byte(YT_PLAYLIST_VIDEO_RENDERER))
 	if idx == -1 {
-		return nil, fmt.Errorf("error %s not found in html\n", YT_PLAYLIST_VIDEO_RENDERER)
+		yt.logger.Println(logger.LOG_LEVEL_DEBUG, string(data))
+		return nil, errors.New("error: " + YT_PLAYLIST_VIDEO_RENDERER + " not found in html")
 	}
 
 	idx2 := bytes.Index(data[idx + len(YT_PLAYLIST_VIDEO_RENDERER):], []byte(YT_PLAYLIST_VIDEO_RENDERER))
@@ -54,7 +56,7 @@ func (yt *YoutubeExtractor) GetListVideoFromPlaylist(playlistUrl string) (*Playl
 
 	start := bytes.Index(data[idx:], []byte("{"))
 	if idx == -1 {
-		return nil, fmt.Errorf("error { not found in start %s\n", YT_PLAYLIST_VIDEO_RENDERER)
+		return nil, errors.New("error { not found in start " + YT_PLAYLIST_VIDEO_RENDERER)
 	}
 
 	idx += start
@@ -66,7 +68,7 @@ func (yt *YoutubeExtractor) GetListVideoFromPlaylist(playlistUrl string) (*Playl
 
 	err = json.Unmarshal([]byte(jsonStr), &PlaylistRenderer)
 	if err != nil {
-		return nil, fmt.Errorf("error cannot Unmarshal json data into PlaylistVideoListRenderer, error: %s\n", err.Error())
+		return nil, errors.New("error cannot Unmarshal json data into PlaylistVideoListRenderer, error: " + err.Error())
 	}
 
 	return &PlaylistRenderer, nil

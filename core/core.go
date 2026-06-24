@@ -1,40 +1,39 @@
 package core
 
 type DownloadItem struct {
-	OutputFile				string
-	OutputPath				string
-	Media 					[]MediaInfo
+	OutputFile string
+	OutputPath string
+	Media      []MediaInfo
 
-	IsPlaylist 				bool
-	Entries					*[]DownloadItem
+	IsPlaylist bool
+	Entries    *[]DownloadItem
 }
 
 type Format struct {
-    ID        				string
-    URL       				string
-	Size 					int64
+	ID   string
+	URL  string
+	Size int64
 
-	Type 					string
+	Type string
 
-    VideoCodec 				string
-    AudioCodec 				string
+	VideoCodec string
+	AudioCodec string
 
-    Width     				int
-    Height    				int
+	Width  int
+	Height int
 
-    HasVideo  				bool
-    HasAudio  				bool
+	HasVideo bool
+	HasAudio bool
 
-    IsHLS     				bool
-    IsDASH    				bool
+	IsHLS  bool
+	IsDASH bool
 }
 
 type MediaInfo struct {
-	ID 						string
-	Tittle					string
-	Size					int64
-	FileName				string
+	ID       string
+	Tittle   string
+	Size     int64
+	FileName string
 
-	Format 					Format
+	Format Format
 }
-

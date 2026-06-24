@@ -1,12 +1,13 @@
 package downloader
 
 import (
+	"errors"
 	"fmt"
 	"godl/config"
 	"godl/core"
 	"godl/extractor"
-	"godl/extractor/youtube"
 	"godl/httpclient"
+	"godl/logger"
 	"godl/postproccessor"
 	"godl/progress"
 	"io"
@@ -18,22 +19,24 @@ import (
 )
 
 type Downloader struct {
-	client      		*http.Client
-	configs				*config.Config
-	url         		string
-	outFile				string
-	config      		config.DownloaderConfig
-	postprocessors 		[]postproccessor.Postprocessor
+	client         *http.Client
+	configs        *config.Config
+	url            string
+	outFile        string
+	config         config.DownloaderConfig
+	postprocessors []postproccessor.Postprocessor
+	logger         *logger.Logger
 }
 
 func NewDownloader(cfg *config.Config) Downloader {
 	return Downloader{
-		client: 		httpclient.NewClient(false, cfg.DownloaderCfg.MaxRetries),
-		configs:	 	cfg,
-		config:		 	*cfg.DownloaderCfg,
-		url: 			cfg.Url,
-		outFile: 		cfg.OutFile,
+		client:         httpclient.NewClient(false, cfg.DownloaderCfg.MaxRetries),
+		configs:        cfg,
+		config:         *cfg.DownloaderCfg,
+		url:            cfg.Url,
+		outFile:        cfg.OutFile,
 		postprocessors: postproccessor.GetALlPP(),
+		logger:         cfg.Logger,
 	}
 }
 
@@ -47,7 +50,7 @@ func (d *Downloader) downloadAll(url string, file *os.File, downloaded *int64) e
 
 		resp, err := d.client.Do(req)
 		if err != nil {
-			fmt.Println("retry (request error):", err)
+			d.logger.Printf(logger.LOG_LEVEL_WARN, "[WARNING] retry (request error): %s\n", err.Error())
 			time.Sleep(time.Second)
 			continue
 		}
@@ -61,7 +64,7 @@ func (d *Downloader) downloadAll(url string, file *os.File, downloaded *int64) e
 			if n > 0 {
 				written, err := file.Write(buf[:n])
 				if err != nil {
-					fmt.Printf("[Downloader] error while writing into file: %s\n", file.Name())
+					d.logger.Printf(logger.LOG_LEVEL_INFO, "[Downloader] error while writing into file: %s\n", file.Name())
 				}
 
 				offset += int64(n)
@@ -74,7 +77,7 @@ func (d *Downloader) downloadAll(url string, file *os.File, downloaded *int64) e
 			}
 
 			if err != nil {
-				fmt.Println("connection error:", err)
+				d.logger.Printf(logger.LOG_LEVEL_WARN, "[WARNING] connection error: %s\n", err.Error())
 				resp.Body.Close()
 				time.Sleep(time.Second)
 				break // keluar loop read → retry request
@@ -82,7 +85,7 @@ func (d *Downloader) downloadAll(url string, file *os.File, downloaded *int64) e
 		}
 	}
 
-	return fmt.Errorf("Download failed after retries")
+	return errors.New("Download failed after retries")
 }
 func (d *Downloader) downloadChunk(url string, start, end int64, file *os.File, downloaded *int64) error {
 	maxRetry := 5
@@ -95,14 +98,14 @@ func (d *Downloader) downloadChunk(url string, start, end int64, file *os.File, 
 
 		resp, err := d.client.Do(req)
 		if err != nil {
-			fmt.Println("retry (request error):", err)
+			d.logger.Printf(logger.LOG_LEVEL_WARN, "[WARNING] retry (request error): %s\n", err)
 			time.Sleep(time.Second)
 			continue
 		}
 
 		if resp.StatusCode != http.StatusPartialContent {
 			resp.Body.Close()
-			return fmt.Errorf("range not supported")
+			return errors.New("range not supported")
 		}
 
 		buf := make([]byte, 32*1024)
@@ -114,7 +117,7 @@ func (d *Downloader) downloadChunk(url string, start, end int64, file *os.File, 
 			if n > 0 {
 				written, err := file.WriteAt(buf[:n], offset)
 				if err != nil {
-					fmt.Printf("[Downloader] error while writing buffer into file: %s\n", err.Error())	
+					d.logger.Printf(logger.LOG_LEVEL_INFO, "[Downloader] error while writing buffer into file: %s\n", err.Error())
 				}
 
 				offset += int64(n)
@@ -128,14 +131,14 @@ func (d *Downloader) downloadChunk(url string, start, end int64, file *os.File, 
 			}
 
 			if err != nil {
-				fmt.Println("connection error, retrying from:", currentStart, err)
+				d.logger.Printf(logger.LOG_LEVEL_WARN, "connection error %s, retrying from: %d", err.Error(), currentStart)
 				resp.Body.Close()
 				time.Sleep(time.Second)
 				break // keluar loop read → retry request
 			}
 		}
 	}
-	return fmt.Errorf("chunk failed after retries")
+	return errors.New("chunk failed after retries")
 }
 
 func (d *Downloader) getHeaderResponse(url string) (*http.Response, error) {
@@ -158,19 +161,19 @@ func (d *Downloader) getHeaderResponse(url string) (*http.Response, error) {
 func (d *Downloader) downloadDirectUrl(url string, config *config.Config) error {
 	resp, err := d.getHeaderResponse(url)
 	if err != nil {
-		return fmt.Errorf("error while requesting header response: %s\n", err)
+		return errors.New("error while requesting header response: " + err.Error())
 	}
 
 	contentLength := resp.ContentLength
 
 	_, err = os.Stat(config.OutFile)
-	if os.IsExist(err){
+	if os.IsExist(err) {
 		config.OutFile += time.DateOnly
 	}
 
-	f, err := os.OpenFile(config.OutFile, os.O_CREATE | os.O_RDWR, 0600)
+	f, err := os.OpenFile(config.OutFile, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
-		return fmt.Errorf("error while opening file: %s", err)
+		return errors.New("error while opening file" + err.Error())
 	}
 	defer f.Close()
 
@@ -185,7 +188,7 @@ func (d *Downloader) downloadDirectUrl(url string, config *config.Config) error 
 	}
 
 	if !supportRanges {
-		fmt.Printf("Server does not support paralel request, downloading all file in 1 connection")
+		d.logger.Printf(logger.LOG_LEVEL_WARN, "Server does not support paralel request, downloading all file in 1 connection")
 		done := make(chan bool, 1)
 
 		go progress.ShowProgress(contentLength, &downloaded, done)
@@ -195,13 +198,12 @@ func (d *Downloader) downloadDirectUrl(url string, config *config.Config) error 
 		if err != nil {
 			return err
 		}
-		done<-true
+		done <- true
 
-		fmt.Printf("[Info] Downloaded: %s in %s\n", config.OutFile, time.Since(timeStart))
-
+		d.logger.Printf(logger.LOG_LEVEL_INFO, "[Info] Downloaded: %s in %s\n", config.OutFile, time.Since(timeStart))
 
 	} else {
-		fmt.Printf("[Downloader] Downloading %s in %d connection\n", f.Name(), d.config.Gorountines)
+		d.logger.Printf(logger.LOG_LEVEL_INFO, "[Downloader] Downloading %s in %d connection\n", f.Name(), d.config.Gorountines)
 		var wg sync.WaitGroup
 		timeStart := time.Now()
 		done := make(chan bool, 1)
@@ -214,13 +216,15 @@ func (d *Downloader) downloadDirectUrl(url string, config *config.Config) error 
 			start := chunk * int64(i)
 			end := start + chunk - 1
 
-			if i == d.config.Gorountines - 1 { end = contentLength }
+			if i == d.config.Gorountines-1 {
+				end = contentLength
+			}
 
-			go func(start, end int64){
+			go func(start, end int64) {
 				err = d.downloadChunk(
-					url, 
+					url,
 					start,
-					end, 
+					end,
 					f,
 					&downloaded,
 				)
@@ -233,9 +237,9 @@ func (d *Downloader) downloadDirectUrl(url string, config *config.Config) error 
 			}
 		}
 		wg.Wait()
-		done<-true
+		done <- true
 
-		fmt.Printf("[Info] Downloaded %s in %s\n", f.Name(), time.Since(timeStart))
+		d.logger.Printf(logger.LOG_LEVEL_INFO, "[Info] Downloaded %s in %s\n", f.Name(), time.Since(timeStart))
 	}
 
 	return nil
@@ -244,7 +248,7 @@ func (d *Downloader) downloadDirectUrl(url string, config *config.Config) error 
 func (d *Downloader) executeParalelHttpDownload(url, filename string, size int64) error {
 	cl := size
 	threads := d.calcThreads(cl)
-	threads = d.config.Gorountines;
+	threads = d.config.Gorountines
 
 	f, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
@@ -255,7 +259,7 @@ func (d *Downloader) executeParalelHttpDownload(url, filename string, size int64
 	chunk := cl / int64(threads)
 
 	var downloaded int64 = 0
-	fmt.Printf("[Downloader] Downloading: %s\n", filename)
+	d.logger.Printf(logger.LOG_LEVEL_INFO, "[Downloader] Downloading: %s\n", filename)
 	timeStart := time.Now()
 
 	var wg sync.WaitGroup
@@ -272,29 +276,29 @@ func (d *Downloader) executeParalelHttpDownload(url, filename string, size int64
 			end = cl - 1
 		}
 
-		go func (start, end int64)  {
+		go func(start, end int64) {
 			defer wg.Done()
 			d.downloadChunk(url, start, end, f, &downloaded)
 		}(start, end)
 	}
 
 	wg.Wait()
-	done<-true
+	done <- true
 	close(done)
-	f.Close()
+	defer f.Close()
 
-	fmt.Printf("\n[Info] Downloaded %s, size: %d, ", filename, cl)
-	fmt.Printf("in: %s\n", time.Since(timeStart))
+	fmt.Println()
+	d.logger.Printf(logger.LOG_LEVEL_INFO, "[Info] Downloaded %s, size: %d, in: %s\n", filename, cl, time.Since(timeStart))
 
 	return nil
 }
 
 func (d *Downloader) DownloadItem(downloadItem *core.DownloadItem) error {
-	fmt.Printf("[Downloader] Downloading item: %+v\n", downloadItem)
 	for _, media := range downloadItem.Media {
-		fmt.Printf("[Downloader] Downloading url: %s\n", media.Format.URL)
 		err := d.executeParalelHttpDownload(media.Format.URL, media.FileName, media.Size)
-		return err 
+		if err != nil {
+			return nil
+		}
 	}
 
 	for _, pp := range d.postprocessors {
@@ -307,14 +311,15 @@ func (d *Downloader) DownloadItem(downloadItem *core.DownloadItem) error {
 	return nil
 }
 
-
 func (d *Downloader) StartDownload(url string, config *config.Config) error {
-	infoExtractor := youtube.NewYoutubeExtractor(config) 
-	downloadItem, err := infoExtractor.Extract(url)
+	infoExtractor := extractor.NewInfoExtractor(config)
+	downloadItem, err := infoExtractor.Start()
+	d.logger.SetFlags(0)
+
 	if err != nil {
 		if err.Error() == extractor.ErrExtractorNotFound {
 
-			fmt.Printf("[Downloader] Unknown url: trying to download file directly")
+			d.logger.Printf(logger.LOG_LEVEL_WARN, "[WARNING] Unknown url: trying to download file directly")
 			return d.downloadDirectUrl(url, config)
 		}
 
@@ -322,12 +327,12 @@ func (d *Downloader) StartDownload(url string, config *config.Config) error {
 	}
 	if downloadItem.IsPlaylist {
 		var totalItem int = len(*downloadItem.Entries)
-		fmt.Printf("[Downloader] Downloading playlist url, list videos: %d\n",	totalItem)
+		d.logger.Printf(logger.LOG_LEVEL_INFO, "[Downloader] Downloading playlist url, list videos: %d\n", totalItem)
 		for i, item := range *downloadItem.Entries {
-			fmt.Printf("[Downloader] Downloading playlist [%d/%d]\n", i + 1, totalItem)
+			d.logger.Printf(logger.LOG_LEVEL_INFO, "[Downloader] Downloading playlist [%d/%d]\n", i+1, totalItem)
 			err := d.DownloadItem(&item)
 			if err != nil {
-				fmt.Printf("[Downloader] Error while downloading %s, skipping download...\n", item.OutputFile)
+				d.logger.Printf(logger.LOG_LEVEL_INFO, "[Downloader] Error while downloading %s, skipping download...\n", item.OutputFile)
 			}
 		}
 	} else {
@@ -337,16 +342,14 @@ func (d *Downloader) StartDownload(url string, config *config.Config) error {
 	return nil
 }
 
-func (d *Downloader)	calcThreads(fileSize int64) int {
+func (d *Downloader) calcThreads(fileSize int64) int {
 	const chunkSize = 2 * 1024 * 1024 // 2MB
 
 	threads := int(fileSize / chunkSize)
 
 	if threads < 1 {
 		threads = 1
-	}
-
-	if threads > 16 {
+	} else if threads > 16 {
 		threads = 16
 	}
 

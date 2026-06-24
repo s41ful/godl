@@ -50,7 +50,7 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 func DumpRequest(req *http.Request, withBody bool) string {
 	dump, err := httputil.DumpRequestOut(req, withBody)
 	if err != nil {
-		return "dump error:" + err.Error()
+		return "dump request error:" + err.Error()
 	}
 	return string(dump)
 }
@@ -58,7 +58,7 @@ func DumpRequest(req *http.Request, withBody bool) string {
 func DumpResponseHeader(resp *http.Response) string {
 	dump, err := httputil.DumpResponse(resp, false)
 	if err != nil {
-		return "dump error: " + err.Error() 
+		return "dump response error: " + err.Error() 
 	}
 
 	return string(dump)
@@ -87,21 +87,37 @@ type LogTransport struct {
 	Delay				time.Duration
 }
 
-func (l *LogTransport)RoundTrip(r *http.Request) (*http.Response, error){
-	if r.Body == nil {
-		fmt.Printf("SENDING REQUEST:\n%s\n", DumpRequest(r, false))
-	} else {
-		fmt.Printf("SENDING REQUEST:\n%s\n", DumpRequest(r, true))
-	}
+func (l *LogTransport)RoundTrip(req *http.Request) (*http.Response, error){
+    var resp *http.Response
+    var err error
+	fmt.Printf("SENDING REQUEST:\n%s\n", DumpRequest(req, req.Body != nil))
 
-	resp, err := l.Base.RoundTrip(r)
+    for i := 0; i <= l.MaxRetries; i++ {
+        resp, err = l.Base.RoundTrip(req)
+
+        if err == nil && resp.StatusCode < 500 {
+			fmt.Printf("RECEIVING HEADERS:\n%s\n", DumpResponseHeader(resp))
+            return resp, nil
+        }
+
+				fmt.Printf("Request Failed retrying: %d\n", i)
+        if resp != nil && resp.Body != nil {
+            resp.Body.Close()
+        }
+// retry terakhir → return error
+        if i == l.MaxRetries {
+            break
+        }
+
+        time.Sleep(l.Delay)
+    }
+
 	if err != nil {
-		fmt.Printf("ERROR: %s\n", err)
-		return resp, err
+		fmt.Printf("httpclient: %s\n", err)
+		return nil, err
 	}
-	fmt.Printf("RECEIVING HEADERS:\n%s\n", DumpResponseHeader(resp))
 
-	return resp, err
+    return resp, err
 }
 
 

@@ -2,7 +2,6 @@ package youtube
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
 	"strings"
 )
@@ -32,8 +31,7 @@ func extractJSON(s string, start int) (string, error) {
 
 		for i := start; i < len(s); i++ {
 				c := s[i]
-
-				if escape {
+if escape {
 						escape = false
 						continue
 				}
@@ -62,7 +60,7 @@ func extractJSON(s string, start int) (string, error) {
 				}
 		}
 
-		return "", fmt.Errorf("error: invalid JSON")
+		return "", errors.New(ErrInvalidJSON)
 }
 
 func getVisitorData(html string) string {
@@ -79,7 +77,6 @@ func getPlayerUrl(html string) string {
 		re := regexp.MustCompile(`"jsUrl":"([^"]+)"`)
 		match := re.FindStringSubmatch(html)
 		if len(match) > 1 {
-				//log.Printf("playerUrl found: %s\n", match[1])
 				return match[1];
 		}
 
@@ -106,7 +103,7 @@ func getApiKey(html string) string {
 				return match[1]
 		}
 
-		return match[0]
+		return ""
 }
 
 func pickBestAudio(formats []Formats) *Formats {

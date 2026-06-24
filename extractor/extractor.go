@@ -2,7 +2,6 @@ package extractor
 
 import (
 	"errors"
-	"fmt"
 	"godl/config"
 	"godl/core"
 	"godl/extractor/youtube"
@@ -33,7 +32,6 @@ func (ie *InfoExtractor) FindExtractor() (Extractor, error) {
 
 	for _, extractor := range extractors {
 		if extractor.Match(ie.config.Url) {
-			fmt.Printf("returning youtube extractor\n")
 			extractor.InitConfig(ie.config)
 			return extractor, nil
 		}
@@ -49,7 +47,6 @@ func (ie *InfoExtractor) Start() (*core.DownloadItem, error) {
 	}
 
 	extractor.InitConfig(ie.config)
-	fmt.Printf("initializing config\n")
 	
 	return extractor.Extract(ie.config.Url)
 }

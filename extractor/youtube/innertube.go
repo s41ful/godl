@@ -3,7 +3,8 @@ package youtube
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
+	"errors"
+	"godl/logger"
 	"io"
 	"net/http"
 )
@@ -16,7 +17,7 @@ func (yt *YoutubeExtractor) CallApi(ytData *YtMetaData, ytClient string)(PlayerR
 
 		resp, err := yt.client.Do(req)
 		if err != nil {
-				return PlayerResponse{}, fmt.Errorf("[Error]: cannot do request, %s", err.Error())
+				return PlayerResponse{}, errors.New("[Error]: cannot do request, " + err.Error())
 		}
 
 		defer resp.Body.Close()
@@ -25,34 +26,33 @@ func (yt *YoutubeExtractor) CallApi(ytData *YtMetaData, ytClient string)(PlayerR
 				return PlayerResponse{}, err
 		}
 
-		fmt.Printf("[Call Api] Downloading %s JSON Api\n", ytClient)
+		yt.logger.Printf(logger.LOG_LEVEL_INFO, "[Call Api] Downloading %s JSON Api\n", ytClient)
 		playerResponse := PlayerResponse{}
 
 		if resp.StatusCode == 400 {
-				fmt.Println(string(respApi))
+				return playerResponse, errors.New("[Error] response status 400")
 		}
 
 		err = json.Unmarshal(respApi, &playerResponse)
 		if err != nil {
 				return PlayerResponse{}, err
 		}
-		//fmt.Printf("Tumbnails: %+v\n", playerResponse.VideoDetails.Thumbnail)
 
 		return playerResponse, nil
 }
 
 func (yt *YoutubeExtractor) NewPayload(clientName, vidioId string, signatureTimestamp int)Payload {
 		switch clientName {
-		case "ANDROID_VR", "android_vr":
+		case "ANDROID_VR":
 				return Payload{
 						Context: Context{
 								Client: Client {
 										ClientName: "ANDROID_VR",
-										ClientVersion: "1.71.26",
+										ClientVersion: "1.65.10",
 										DeviceMake: "Oculus",
 										DeviceModel: "Quest 3",
 										AndroidSdkVersion: 32,
-										UserAgent:  "com.google.android.apps.youtube.vr.oculus/1.71.26 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
+										UserAgent:  "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
 										Hl: "en",
 										OsName: "Android",
 										OsVersion: "12L",
@@ -128,12 +128,12 @@ func (yt *YoutubeExtractor) MakeApiRequest(ytData *YtMetaData, clientName string
 						return nil, err
 				}
 
-				req.Header.Set("User-Agent", "com.google.android.apps.youtube.vr.oculus/1.71.26" )
+				req.Header.Set("User-Agent", "com.google.android.apps.youtube.vr.oculus/1.65.10" )
 				for i := range ytData.Cookies {
 						req.AddCookie(ytData.Cookies[i])
 				}
 				req.Header.Add("X-Youtube-Client-Name", "28")
-				req.Header.Add("X-Youtube-Client-Version", "1.71.26")
+				req.Header.Add("X-Youtube-Client-Version", "1.65.10")
 				req.Header.Add("X-Goog-Visitor-Id", ytData.VisitorData)
 				req.Header.Set("Content-Type", "application/json")
 				req.Header.Set("Accept", "text/html,application/xhtml+xml,applicatio    n/xml;q=0.9,*/*;q=0.8")
@@ -190,6 +190,6 @@ func (yt *YoutubeExtractor) MakeApiRequest(ytData *YtMetaData, clientName string
 
 				return req, nil
 		default:
-				return nil, fmt.Errorf("error: unknown clientName")
+				return nil, errors.New("error: unknown clientName")
 		}
 }

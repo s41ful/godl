@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"godl/config"
 	"godl/downloader"
-	"os"
 )
 
-func main(){
-	fmt.Printf("args: %v\n", os.Args)
+func main() {
+	// fmt.Printf("args: %v\n", os.Args)
 
 	var configs config.Config
 
@@ -17,9 +16,9 @@ func main(){
 		return
 	}
 
-	fmt.Printf("[Info] configs: %+v, ", configs)
-	fmt.Printf("downloader configs: %+v, ", configs.DownloaderCfg)
-	fmt.Printf("extractor configs: %v\n", configs.ExtractorConfig)
+	// fmt.Printf("[Info] configs: %+v, ", configs)
+	// fmt.Printf("downloader configs: %+v, ", configs.DownloaderCfg)
+	// fmt.Printf("extractor configs: %v\n", configs.ExtractorConfig)
 
 	dl := downloader.NewDownloader(&configs)
 	err := dl.StartDownload(configs.Url, &configs)
