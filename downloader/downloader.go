@@ -131,7 +131,7 @@ func (d *Downloader) downloadChunk(url string, start, end int64, file *os.File, 
 			}
 
 			if err != nil {
-				d.logger.Printf(logger.LOG_LEVEL_WARN, "connection error %s, retrying from: %d", err.Error(), currentStart)
+				d.logger.Printf(logger.LOG_LEVEL_WARN, "\nconnection error(%d) %s, retrying from: %d", attempt, err.Error(), currentStart)
 				resp.Body.Close()
 				time.Sleep(time.Second)
 				break // keluar loop read → retry request
@@ -287,7 +287,7 @@ func (d *Downloader) executeParalelHttpDownload(url, filename string, size int64
 	close(done)
 	defer f.Close()
 
-	fmt.Println()
+	d.logger.Println(logger.LOG_LEVEL_INFO, "")
 	d.logger.Printf(logger.LOG_LEVEL_INFO, "[Info] Downloaded %s, size: %d, in: %s\n", filename, cl, time.Since(timeStart))
 
 	return nil

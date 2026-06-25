@@ -65,6 +65,6 @@ func ParseArgs() Config {
 
 	cfg.Url = args[0]
 	cfg.Logger = logger.NewLogger(cfg.LogLevel)
-	cfg.Logger.SetFlags(1)
+	cfg.Logger.SetFlags(0)
 	return cfg
 }

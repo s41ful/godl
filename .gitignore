@@ -1,22 +1,8 @@
-# Binary hasil compile (sesuaikan dengan nama outputmu)
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
 .env
 
-# Test binaries
 *.test
-
-# Go workspace file
 go.work
 godl
 
-# Folder vendor (jika kamu tidak ingin menyimpannya di git)
-vendor/
-node-modules/
-# File log atau temp
-*.log
 tmp/
 yt-files/

@@ -3,6 +3,7 @@ package youtube
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"regexp"
@@ -18,7 +19,7 @@ import (
 const (
 	DEFAULT_YT_CLIENT          = "ANDROID_VR"
 	YT_INITIAL_PLAYER_RESPONSE = "ytInitialPlayerResponse"
-	YT_PLAYLIST_VIDEO_RENDERER = "playlistVideoRenderer"
+	YT_PLAYLIST_VIDEO_RENDERER = "playlistVideoListRenderer"
 )
 
 const (
@@ -51,10 +52,13 @@ type YtMetaData struct {
 
 type Payload struct {
 	Context         Context          `json:"context"`
-	VideoId         string           `json:"videoId"`
+	VideoId         string           `json:"videoId,omitempty"`
+	BrowseId				string					 `json:"browseId,omitempty"`
 	PlaybackContext *PlaybackContext `json:"playbackContext,omitempty"`
-	ContentCheckOk  bool             `json:"contentCheckOk"`
-	RacyCheckOk     bool             `json:"racyCheckOk"`
+	Continuation    string					 `json:"continuation,omitempty"`
+	ContentCheckOk  bool             `json:"contentCheckOk,omitempty"`
+	RacyCheckOk     bool             `json:"racyCheckOk,omitempty"`
+	Params					string   				 `json:"params,omitempty"`
 }
 
 type Context struct {
@@ -166,13 +170,16 @@ func (yt *YoutubeExtractor) Extract(url string) (*core.DownloadItem, error) {
 	if err != nil {
 		return nil, err
 	}
+	yt.logger.SetFlags(0)
 
 	switch urlType {
 	case PLAYLIST_URL:
-		yt.logger.Println(logger.LOG_LEVEL_DEBUG, "[Youtube] Extracting PlaylistUrl")
+		matchID := UrlIsPlaylist.FindStringSubmatch(url)
+		yt.logger.Printf(logger.LOG_LEVEL_DEBUG, "[Youtube] Extracting Playlist: (%s)\n", matchID[1])
 		return yt.ExtractPlaylist(url)
 	case VIDEO_URL:
-		yt.logger.Println(logger.LOG_LEVEL_DEBUG, "[Youtube] Extracting VideoUrl")
+		matchID := UrlIsVideo.FindStringSubmatch(url)
+		yt.logger.Printf(logger.LOG_LEVEL_DEBUG, "[Youtube] Extracting Video: (%s)\n", matchID[1])
 		return yt.ExtractVideoUrl(url)
 	}
 
@@ -193,6 +200,10 @@ func (yt *YoutubeExtractor) ExtractPlaylist(url string) (*core.DownloadItem, err
 
 	for i, item := range playlist.Contents {
 		url := getUrlFromVideoID(item.PlaylistVideoListRenderer.VideoID)
+		yt.logger.SetLogLevel(logger.LOG_LEVEL_INFO)
+		fmt.Printf("\r\033[K[Youtube] Extracting playlist items: [%d/%d]", i+1, len(playlist.Contents))
+
+		yt.logger.SetLogLevel(logger.LOG_LEVEL_NONE)
 
 		item, err := yt.ExtractVideoUrl(url)
 		if err != nil {
@@ -202,6 +213,9 @@ func (yt *YoutubeExtractor) ExtractPlaylist(url string) (*core.DownloadItem, err
 
 		itemList = append(itemList, *item)
 	}
+
+	fmt.Println()
+
 	return &core.DownloadItem{
 		IsPlaylist: true,
 
@@ -248,7 +262,7 @@ func (yt *YoutubeExtractor) ExtractVideoUrl(url string) (*core.DownloadItem, err
 		return nil, err
 	}
 
-	yt.logger.Printf(logger.LOG_LEVEL_INFO, "[Extractor] Getting format %d+%d\n", bestAudio.Itag, bestVideo.Itag)
+	yt.logger.Printf(logger.LOG_LEVEL_INFO, "[youtube] Getting format %d+%d\n", bestAudio.Itag, bestVideo.Itag)
 
 	var mediaInfo = []core.MediaInfo{
 		{
@@ -298,7 +312,7 @@ func (yt *YoutubeExtractor) ExtractWebPage(url string) (*YtMetaData, error) {
 		yt.logger.Println(logger.LOG_LEVEL_DEBUG, err)
 		return nil, err
 	}
-	yt.logger.Println(logger.LOG_LEVEL_INFO, "[Extractor] Downloading web page")
+	yt.logger.Println(logger.LOG_LEVEL_INFO, "[youtube] Downloading web page")
 
 	resp, err := yt.client.Do(req)
 	if err != nil {
@@ -317,7 +331,6 @@ func (yt *YoutubeExtractor) ExtractWebPage(url string) (*YtMetaData, error) {
 
 	html := string(data)
 
-	//What if idx == -1??
 	idx := strings.Index(html, YT_INITIAL_PLAYER_RESPONSE)
 	if idx == -1 {
 		return nil, errors.New(ErrYtInitialPlayerResponseNotFound)

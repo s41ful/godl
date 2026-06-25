@@ -62,19 +62,19 @@ func (l *Logger) SetFlags(flag int) {
 }
 
 func (l *Logger) Print(level LOG_LEVEL, v any) {
-	if level >= LOG_LEVEL(l.logLevel) {
+	if level <= l.logLevel {
 		log.Print(v)
 	}
 }
 
 func (l *Logger) Printf(level LOG_LEVEL, format string, v ...any) {
-	if level >= LOG_LEVEL(l.logLevel) {
+	if level <= l.logLevel {
 		log.Printf(format, v...)
 	}
 }
 
 func (l *Logger) Println(level LOG_LEVEL, v any) {
-	if level >= LOG_LEVEL(l.logLevel) {
+	if level <= l.logLevel {
 		log.Println(v)
 	}
 }

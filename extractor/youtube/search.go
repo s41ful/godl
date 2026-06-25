@@ -31,7 +31,7 @@ func extractJSON(s string, start int) (string, error) {
 
 		for i := start; i < len(s); i++ {
 				c := s[i]
-if escape {
+				if escape {
 						escape = false
 						continue
 				}

@@ -7,7 +7,72 @@ import (
 	"godl/logger"
 	"io"
 	"net/http"
+	"strings"
 )
+
+var DEFAULT_PAYLOAD map[string]Payload = map[string]Payload{
+		"android_vr": Payload{
+				Context: Context{
+						Client: Client {
+								ClientName: "ANDROID_VR",
+								ClientVersion: "1.65.10",
+								DeviceMake: "Oculus",
+								DeviceModel: "Quest 3",
+								AndroidSdkVersion: 32,
+								UserAgent:  "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
+								Hl: "en",
+								OsName: "Android",
+								OsVersion: "12L",
+								TimeZone: "UTC",
+								Utcoffsetminutes: 0,	
+						},
+				},
+				RacyCheckOk: true,
+				ContentCheckOk: true,
+
+				PlaybackContext: &PlaybackContext{
+						ContentPlaybackContext: &ContentPlaybackContext{
+								Html5Preference: "HTML5_PREF_WANTS",
+						},
+				},
+		},
+
+		"web": Payload{
+				Context: Context{
+						Client: Client{
+								ClientName: "WEB",
+								ClientVersion: "2.20260114.08.00",
+								UserAgent:  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)",
+								Hl: "en",
+								TimeZone: "UTC",
+								Utcoffsetminutes: 0,
+						},
+				},
+				PlaybackContext: &PlaybackContext{
+						ContentPlaybackContext: &ContentPlaybackContext{
+								Html5Preference: "HTML5_PREF_WANTS",
+						},
+				},
+				ContentCheckOk: true,
+				RacyCheckOk: true,
+		},
+
+		"android": Payload{
+				Context: Context{
+						Client: Client{
+								ClientName:    "ANDROID",
+								ClientVersion: "17.31.35",
+								UserAgent:     "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
+								Hl:            "en",
+								TimeZone:      "UTC",
+								Utcoffsetminutes: 0,
+						},
+				},
+				ContentCheckOk: true,
+				RacyCheckOk: true,
+		},
+}
+
 
 func (yt *YoutubeExtractor) CallApi(ytData *YtMetaData, ytClient string)(PlayerResponse, error){
 		req, err := yt.MakeApiRequest(ytData, ytClient)
@@ -26,7 +91,7 @@ func (yt *YoutubeExtractor) CallApi(ytData *YtMetaData, ytClient string)(PlayerR
 				return PlayerResponse{}, err
 		}
 
-		yt.logger.Printf(logger.LOG_LEVEL_INFO, "[Call Api] Downloading %s JSON Api\n", ytClient)
+		yt.logger.Printf(logger.LOG_LEVEL_INFO, "[Youtube][Call Api] Downloading %s JSON Api\n", ytClient)
 		playerResponse := PlayerResponse{}
 
 		if resp.StatusCode == 400 {
@@ -42,76 +107,57 @@ func (yt *YoutubeExtractor) CallApi(ytData *YtMetaData, ytClient string)(PlayerR
 }
 
 func (yt *YoutubeExtractor) NewPayload(clientName, vidioId string, signatureTimestamp int)Payload {
+		var payload Payload
 		switch clientName {
 		case "ANDROID_VR":
-				return Payload{
-						Context: Context{
-								Client: Client {
-										ClientName: "ANDROID_VR",
-										ClientVersion: "1.65.10",
-										DeviceMake: "Oculus",
-										DeviceModel: "Quest 3",
-										AndroidSdkVersion: 32,
-										UserAgent:  "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
-										Hl: "en",
-										OsName: "Android",
-										OsVersion: "12L",
-										TimeZone: "UTC",
-										Utcoffsetminutes: 0,	
-								},
-						},
-						VideoId: vidioId,
-						RacyCheckOk: true,
-						ContentCheckOk: true,
+				payload = DEFAULT_PAYLOAD[strings.ToLower(clientName)]
+				payload.VideoId = vidioId
+				payload.PlaybackContext.ContentPlaybackContext.SignatureTimeStamp = signatureTimestamp
 
-						PlaybackContext: &PlaybackContext{
-								ContentPlaybackContext: &ContentPlaybackContext{
-										Html5Preference: "HTML5_PREF_WANTS",
-										SignatureTimeStamp: signatureTimestamp,
-								},
-						},
-				}
+				return payload
 
 		case "WEB":
-				return Payload{
-						Context: Context{
-								Client: Client{
-										ClientName: "WEB",
-										ClientVersion: "2.20260114.08.00",
-										UserAgent:  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)",
-										Hl: "en",
-										TimeZone: "UTC",
-										Utcoffsetminutes: 0,
-								},
-						},
-						VideoId: vidioId,
-						PlaybackContext: &PlaybackContext{
-								ContentPlaybackContext: &ContentPlaybackContext{
-										Html5Preference: "HTML5_PREF_WANTS",
-										SignatureTimeStamp: signatureTimestamp,
-								},
-						},
-						ContentCheckOk: true,
-						RacyCheckOk: true,
-				}
+				payload = DEFAULT_PAYLOAD[strings.ToLower(clientName)]
+				payload.VideoId = vidioId
+				payload.PlaybackContext.ContentPlaybackContext.SignatureTimeStamp = signatureTimestamp
+
+				return payload
 		case "ANDROID":
-				return Payload{
-						Context: Context{
-								Client: Client{
-										ClientName:    "ANDROID",
-										ClientVersion: "17.31.35",
-										UserAgent:     "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
-										Hl:            "en",
-										TimeZone:      "UTC",
-										Utcoffsetminutes: 0,
-								},
-						},
-						VideoId: vidioId,
-						ContentCheckOk: true,
-						RacyCheckOk: true,
-				}
+				payload = DEFAULT_PAYLOAD[strings.ToLower(clientName)]
+				payload.VideoId = vidioId
+				payload.PlaybackContext.ContentPlaybackContext.SignatureTimeStamp = signatureTimestamp
+
+				return payload
 		default:
-				return Payload{}
+				return payload
+		}
+}
+
+func (yt *YoutubeExtractor) addYtClientHeaders(req *http.Request, clientName string) {
+		switch clientName {
+		case "ANDROID_VR":
+				req.Header.Set("User-Agent", "com.google.android.apps.youtube.vr.oculus/1.65.10" )
+				req.Header.Add("X-Youtube-Client-Name", "28")
+				req.Header.Add("X-Youtube-Client-Version", "1.65.10")
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+				req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+				req.Header.Add("Origin", "https://www.youtube.com")
+				req.Header.Set("Content-Type", "application/json")
+
+		case "ANDROID":
+				req.Header.Set("User-Agent", "com.google.android.youtube/17.31.35")
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("X-Youtube-Client-Version", "17.31.35")
+
+		case "WEB":
+				req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15")
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("X-Youtube-Client-Name", "1") // ANDROID = 3
+				req.Header.Set("X-Youtube-Client-Version", "2")
+				req.Header.Set("Origin", "https://www.youtube.com")
+
+		default:
 		}
 }
 
@@ -128,18 +174,12 @@ func (yt *YoutubeExtractor) MakeApiRequest(ytData *YtMetaData, clientName string
 						return nil, err
 				}
 
-				req.Header.Set("User-Agent", "com.google.android.apps.youtube.vr.oculus/1.65.10" )
+				yt.addYtClientHeaders(req, clientName)
+
 				for i := range ytData.Cookies {
 						req.AddCookie(ytData.Cookies[i])
 				}
-				req.Header.Add("X-Youtube-Client-Name", "28")
-				req.Header.Add("X-Youtube-Client-Version", "1.65.10")
 				req.Header.Add("X-Goog-Visitor-Id", ytData.VisitorData)
-				req.Header.Set("Content-Type", "application/json")
-				req.Header.Set("Accept", "text/html,application/xhtml+xml,applicatio    n/xml;q=0.9,*/*;q=0.8")
-				req.Header.Set("Accept-Language", "en-US,en;q=0.5")
-				req.Header.Add("Origin", "https://www.youtube.com")
-				req.Header.Set("Content-Type", "application/json")
 
 				return req, nil
 
@@ -156,11 +196,7 @@ func (yt *YoutubeExtractor) MakeApiRequest(ytData *YtMetaData, clientName string
 						return nil, err
 				}
 
-
-				req.Header.Set("User-Agent", "com.google.android.youtube/17.31.35")
-				req.Header.Set("Content-Type", "application/json")
-				req.Header.Set("X-Youtube-Client-Name", "3") // ANDROID = 3
-				req.Header.Set("X-Youtube-Client-Version", "17.31.35")
+				yt.addYtClientHeaders(req, clientName)
 
 				return req, nil
 
@@ -177,16 +213,13 @@ func (yt *YoutubeExtractor) MakeApiRequest(ytData *YtMetaData, clientName string
 						return nil, err
 				}
 
+				yt.addYtClientHeaders(req, clientName)
+
 				for i := range ytData.Cookies {
 						req.AddCookie(ytData.Cookies[i])
 				}
 
-				req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15")
-				req.Header.Set("Content-Type", "application/json")
-				req.Header.Set("X-Youtube-Client-Name", "1") // ANDROID = 3
-				req.Header.Set("X-Youtube-Client-Version", "2")
 				req.Header.Set("X-Goog-Visitor-Id", ytData.VisitorData)
-				req.Header.Set("Origin", "https://www.youtube.com")
 
 				return req, nil
 		default:
