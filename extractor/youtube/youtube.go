@@ -175,11 +175,11 @@ func (yt *YoutubeExtractor) Extract(url string) (*core.DownloadItem, error) {
 	switch urlType {
 	case PLAYLIST_URL:
 		matchID := UrlIsPlaylist.FindStringSubmatch(url)
-		yt.logger.Printf(logger.LOG_LEVEL_DEBUG, "[Youtube] Extracting Playlist: (%s)\n", matchID[1])
+		yt.logger.Printf(logger.LOG_LEVEL_DEBUG, "[youtube] extracting playlist: (%s)\n", matchID[1])
 		return yt.ExtractPlaylist(url)
 	case VIDEO_URL:
 		matchID := UrlIsVideo.FindStringSubmatch(url)
-		yt.logger.Printf(logger.LOG_LEVEL_DEBUG, "[Youtube] Extracting Video: (%s)\n", matchID[1])
+		yt.logger.Printf(logger.LOG_LEVEL_DEBUG, "[youtube] extracting video: (%s)\n", matchID[1])
 		return yt.ExtractVideoUrl(url)
 	}
 
@@ -197,11 +197,12 @@ func (yt *YoutubeExtractor) ExtractPlaylist(url string) (*core.DownloadItem, err
 	}
 
 	var itemList = []core.DownloadItem{}
+	var logLevelBefore = yt.logger.GetLogLevel()
 
 	for i, item := range playlist.Contents {
 		url := getUrlFromVideoID(item.PlaylistVideoListRenderer.VideoID)
 		yt.logger.SetLogLevel(logger.LOG_LEVEL_INFO)
-		fmt.Printf("\r\033[K[Youtube] Extracting playlist items: [%d/%d]", i+1, len(playlist.Contents))
+		fmt.Printf("\r\033[K[youtube] extracting playlist items: [%d/%d]", i+1, len(playlist.Contents))
 
 		yt.logger.SetLogLevel(logger.LOG_LEVEL_NONE)
 
@@ -213,6 +214,8 @@ func (yt *YoutubeExtractor) ExtractPlaylist(url string) (*core.DownloadItem, err
 
 		itemList = append(itemList, *item)
 	}
+
+	yt.logger.SetLogLevel(logLevelBefore)
 
 	fmt.Println()
 
@@ -231,8 +234,6 @@ func (yt *YoutubeExtractor) ExtractVideoUrl(url string) (*core.DownloadItem, err
 
 	respApi, err := yt.CallApi(webPageMetadata, DEFAULT_YT_CLIENT)
 	if err != nil {
-		//yt.logger.Printf("error: %s\n", err.Error())
-
 		return nil, errors.New("error: error while calling api, " + err.Error())
 	}
 
@@ -262,7 +263,7 @@ func (yt *YoutubeExtractor) ExtractVideoUrl(url string) (*core.DownloadItem, err
 		return nil, err
 	}
 
-	yt.logger.Printf(logger.LOG_LEVEL_INFO, "[youtube] Getting format %d+%d\n", bestAudio.Itag, bestVideo.Itag)
+	yt.logger.Printf(logger.LOG_LEVEL_INFO, "[youtube] getting format %d+%d\n", bestAudio.Itag, bestVideo.Itag)
 
 	var mediaInfo = []core.MediaInfo{
 		{
@@ -312,7 +313,7 @@ func (yt *YoutubeExtractor) ExtractWebPage(url string) (*YtMetaData, error) {
 		yt.logger.Println(logger.LOG_LEVEL_DEBUG, err)
 		return nil, err
 	}
-	yt.logger.Println(logger.LOG_LEVEL_INFO, "[youtube] Downloading web page")
+	yt.logger.Println(logger.LOG_LEVEL_INFO, "[youtube] downloading web page")
 
 	resp, err := yt.client.Do(req)
 	if err != nil {
@@ -393,7 +394,7 @@ func (yt *YoutubeExtractor) ExtractWebPage(url string) (*YtMetaData, error) {
 	apiKey := getApiKey(html)
 	apiUrl := "https://www.youtube.com/youtubei/v1/player?prettyPrint=false&key=" + apiKey
 	if apiKey == "" {
-		yt.logger.Printf(logger.LOG_LEVEL_WARN, "[WARNING] Api doesnt found in HTML")
+		yt.logger.Printf(logger.LOG_LEVEL_WARN, "[warning] api key does not found in HTML")
 		apiUrl = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
 	}
 

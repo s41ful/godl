@@ -20,7 +20,7 @@ func getWidth() int {
 		// Berikan fallback jika ioctl gagal
 		_, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(syscall.Stdout), uintptr(syscall.TIOCGWINSZ), uintptr(unsafe.Pointer(ws)))
 		if err != 0 || ws.Col == 0 {
-				return 80 // Standar lebar terminal
+				return 80 // Standard terminal width
 		}
 		return int(ws.Col)
 }
@@ -46,18 +46,16 @@ func renderBar(lastTime time.Time, downloaded *int64, total, lastBytes int64, wi
 				eta = float64(total-done) / speed
 		}
 
-		// Ganti strings.Builder lokal agar tidak ada isu concurrency 
 		var sb strings.Builder
 
 		infoText := fmt.Sprintf(" %5.1f%% | %s/s | %s/%s", 
 		percent, formatBytes(speed), formatBytes(float64(done)), formatBytes(float64(total)))
 		etaText := fmt.Sprintf("ETA: %s ", formatTime(eta))
 
-		// 3 adalah untuk karakter "[" "]" dan "\r"
+		// 3 is for character "[" "]" and "\r"
 		barLen := width - len(infoText) - len(etaText) - 3
 		if barLen < 10 { barLen = 10 } // Minimal bar
-
-		sb.WriteString("\r\033[K") // \r ke awal, \033[K hapus sisa baris ke kanan
+		sb.WriteString("\r\033[K") // \r to the begining, \033[K delete entire line to the right
 		sb.WriteString(etaText)
 		sb.WriteString("[")
 
@@ -96,50 +94,6 @@ func ShowProgress(total int64, downloaded *int64, doneDownload chan bool) {
 						//now := time.Now()
 						done := atomic.LoadInt64(downloaded)
 
-						// if total <= 0 { continue } // Hindari pembagian nol
-
-						// percent := float64(done) / float64(total) * 100
-						// if percent > 100 { percent = 100 }
-
-						// elapsed := now.Sub(lastTime).Seconds()
-						// delta := done - lastBytes
-						// speed := float64(delta) / elapsed
-
-						// lastBytes = done
-						// lastTime = now
-
-						// eta := -1.0
-						// if speed > 0 {
-								// eta = float64(total-done) / speed
-						// }
-
-						// Ganti strings.Builder lokal agar tidak ada isu concurrency 
-						// var sb strings.Builder
-
-						// infoText := fmt.Sprintf(" %5.1f%% | %s/s | %s/%s", 
-						// percent, formatBytes(speed), formatBytes(float64(done)), formatBytes(float64(total)))
-						// etaText := fmt.Sprintf("ETA: %s ", formatTime(eta))
-
-						// 3 adalah untuk karakter "[" "]" dan "\r"
-						// barLen := width - len(infoText) - len(etaText) - 3
-						// if barLen < 10 { barLen = 10 } // Minimal bar
-
-						// sb.WriteString("\r\033[K") // \r ke awal, \033[K hapus sisa baris ke kanan
-						// sb.WriteString(etaText)
-						// sb.WriteString("[")
-
-						// filled := int(float64(barLen) * (percent / 100))
-						// for j := 0; j < barLen; j++ {
-								// if j < filled {
-										// sb.WriteString("█") 
-								// } else {
-										// sb.WriteString("-")
-								// }
-						// }
-						// sb.WriteString("]")
-						// sb.WriteString(infoText)
-
-						// fmt.Print(sb.String())
 						renderBar(lastTime, downloaded, total, lastBytes, width)
 
 						if done >= total {

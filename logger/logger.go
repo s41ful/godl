@@ -61,6 +61,10 @@ func (l *Logger) SetFlags(flag int) {
 	log.SetFlags(flag)
 }
 
+func (l *Logger) GetLogLevel() LOG_LEVEL {
+		return l.logLevel
+}
+
 func (l *Logger) Print(level LOG_LEVEL, v any) {
 	if level <= l.logLevel {
 		log.Print(v)

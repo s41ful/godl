@@ -82,7 +82,7 @@ func (yt *YoutubeExtractor) CallApi(ytData *YtMetaData, ytClient string)(PlayerR
 
 		resp, err := yt.client.Do(req)
 		if err != nil {
-				return PlayerResponse{}, errors.New("[Error]: cannot do request, " + err.Error())
+				return PlayerResponse{}, errors.New("[error]: cannot do request, " + err.Error())
 		}
 
 		defer resp.Body.Close()
@@ -91,11 +91,11 @@ func (yt *YoutubeExtractor) CallApi(ytData *YtMetaData, ytClient string)(PlayerR
 				return PlayerResponse{}, err
 		}
 
-		yt.logger.Printf(logger.LOG_LEVEL_INFO, "[Youtube][Call Api] Downloading %s JSON Api\n", ytClient)
+		yt.logger.Printf(logger.LOG_LEVEL_INFO, "[youtube][call api] downloading %s JSON Api\n", ytClient)
 		playerResponse := PlayerResponse{}
 
 		if resp.StatusCode == 400 {
-				return playerResponse, errors.New("[Error] response status 400")
+				return playerResponse, errors.New("[error] response status == 400")
 		}
 
 		err = json.Unmarshal(respApi, &playerResponse)

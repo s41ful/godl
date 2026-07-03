@@ -51,14 +51,14 @@ func ParseArgs() Config {
 	//Extractor Config
 	flag.IntVar(&cfg.ExtractorConfig.MaxRetries, "extractor-retries", 3, "Total retries extractor do if connnecton error")
 	flag.BoolVar(&cfg.ExtractorConfig.PrintTraffic, "print-traffic", false, "Print all traffic extractor use")
-	flag.BoolVar(&cfg.ExtractorConfig.EmbedThumbnail, "embed-thumbnail", false, "Embed Thumbnail into video")
-	flag.BoolVar(&cfg.ExtractorConfig.EmbedSubtitles, "embed-subs", false, "Write soft subtitles into file")
+	flag.BoolVar(&cfg.ExtractorConfig.EmbedThumbnail, "embed-thumbnail", false, "Embed Thumbnail into video (does not implemented yet)")
+	flag.BoolVar(&cfg.ExtractorConfig.EmbedSubtitles, "embed-subs", false, "Write soft subtitles into file (does not implemented yet)")
 
 	flag.Parse()
 
 	args := flag.Args()
 	if len(args) < 1 {
-		fmt.Println("Usage: godl [options] <URL>")
+		fmt.Println("usage: godl [options] <URL>")
 		flag.PrintDefaults()
 		return Config{}
 	}

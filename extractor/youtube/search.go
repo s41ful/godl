@@ -87,7 +87,6 @@ func getSts(baseJs string) string {
 		re := regexp.MustCompile(`signatureTimestamp:(\d+)|sts:(\d+)`)
 		match := re.FindStringSubmatch(baseJs)
 		if len(match) > 1 {
-				//log.Printf("signatureTimestamp found: %s\n", match[1])
 				return match[1];
 		}
 
@@ -136,7 +135,6 @@ func pickBestVideo(formats []Formats) *Formats {
 						continue
 				}
 
-				// target 1080p atau di bawahnya
 				if f.Height <= 1080 {
 						if best == nil || f.Height > best.Height {
 								best = f
