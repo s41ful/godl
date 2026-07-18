@@ -8,3 +8,7 @@ const (
 	ErrVisitorDataNotFound 			   = "error could not find VISITOR_DATA in watch HTML"
 	ErrSignatureTimeStampNotFound 	   = "error could not find signatureTimestamp in baseJS"
 )
+
+const (
+		WarnFFmpegNotInstalled = "warning FFmpeg not installed on your system, a lot of format may be missing"
+)

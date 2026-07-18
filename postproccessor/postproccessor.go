@@ -52,7 +52,7 @@ func (pp *FFmpegMergePP) Process(downloadedItem *core.DownloadItem) error {
 		}
 	}
 
-	pp.logger.Printf(logger.LOG_LEVEL_INFO, "[Downloader] Merging files with ffmpeg: %s + %s -> %s\n", audioPath, videoPath, outputFile)
+	pp.logger.Printf(logger.LOG_LEVEL_INFO, "[downloader] merging files with ffmpeg: %s + %s -> %s\n", audioPath, videoPath, outputFile)
 	cmd := exec.Command(
 		"ffmpeg",
 		"-i", audioPath,
@@ -67,18 +67,18 @@ func (pp *FFmpegMergePP) Process(downloadedItem *core.DownloadItem) error {
 		return err
 	}
 
-	pp.logger.Printf(logger.LOG_LEVEL_INFO, "[Info] Removing audio & video files\n")
+	pp.logger.Printf(logger.LOG_LEVEL_INFO, "[info] removing audio & video files\n")
 
 	for _, media := range downloadedItem.Media {
 		err = os.Remove(media.FileName)
 		if err != nil {
-			pp.logger.Printf(logger.LOG_LEVEL_INFO, "[Info] error while removing file: %s, err: %s\n", media.FileName, err.Error())	
+			pp.logger.Printf(logger.LOG_LEVEL_INFO, "[info] error while removing file: %s, err: %s\n", media.FileName, err.Error())	
 		}
 	}
 
 	currentDir, err := os.Getwd()
 	if currentDir != downloadedItem.OutputPath {
-		pp.logger.Printf(logger.LOG_LEVEL_INFO, "[Downloader] moving %s to -> %s\n", outputFile, filepath.Join(downloadedItem.OutputFile, outputFile))
+		pp.logger.Printf(logger.LOG_LEVEL_INFO, "[downloader] moving %s to -> %s\n", outputFile, filepath.Join(downloadedItem.OutputFile, outputFile))
 		err = os.Rename(outputFile, filepath.Join(downloadedItem.OutputFile, outputFile))
 		if err != nil {
 			pp.logger.Printf(logger.LOG_LEVEL_INFO, "error while moving file: %s\n", err.Error())

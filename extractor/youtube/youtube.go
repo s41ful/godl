@@ -22,9 +22,10 @@ const (
 	YT_PLAYLIST_VIDEO_RENDERER = "playlistVideoListRenderer"
 )
 
-const (
-	VIDEO_URL = iota
-	PLAYLIST_URL
+const (		
+		UNKNOWN_MEDIA_URL = iota
+		VIDEO_URL 
+		PLAYLIST_URL
 )
 
 var (
@@ -147,6 +148,7 @@ type YoutubeExtractor struct {
 	configs *config.Config
 	config  config.ExtractorConfig
 	logger 	*logger.Logger
+	hasFFmpeg bool
 }
 
 func NewYoutubeExtractor(config *config.Config) *YoutubeExtractor {
@@ -166,11 +168,17 @@ func (yt *YoutubeExtractor) InitConfig(cfg *config.Config) {
 }
 
 func (yt *YoutubeExtractor) Extract(url string) (*core.DownloadItem, error) {
-	urlType, err := getUrlType(url)
+	urlType, err := yt.GetUrlType(url)
 	if err != nil {
 		return nil, err
 	}
+
+	yt.hasFFmpeg = yt.checkFFmpeg()
 	yt.logger.SetFlags(0)
+
+	if !yt.hasFFmpeg {
+			yt.logger.Println(logger.LOG_LEVEL_INFO, "[warning] " + WarnFFmpegNotInstalled)
+	}
 
 	switch urlType {
 	case PLAYLIST_URL:
@@ -200,7 +208,7 @@ func (yt *YoutubeExtractor) ExtractPlaylist(url string) (*core.DownloadItem, err
 	var logLevelBefore = yt.logger.GetLogLevel()
 
 	for i, item := range playlist.Contents {
-		url := getUrlFromVideoID(item.PlaylistVideoListRenderer.VideoID)
+		url := yt.getUrlFromVideoID(item.PlaylistVideoListRenderer.VideoID)
 		yt.logger.SetLogLevel(logger.LOG_LEVEL_INFO)
 		fmt.Printf("\r\033[K[youtube] extracting playlist items: [%d/%d]", i+1, len(playlist.Contents))
 
@@ -229,34 +237,39 @@ func (yt *YoutubeExtractor) ExtractPlaylist(url string) (*core.DownloadItem, err
 func (yt *YoutubeExtractor) ExtractVideoUrl(url string) (*core.DownloadItem, error) {
 	webPageMetadata, err := yt.ExtractWebPage(url)
 	if err != nil {
-		return nil, errors.New("error: error while extracting web page, " + err.Error())
+		return nil, errors.New("error while extracting web page, " + err.Error())
+	}
+
+	if !yt.hasFFmpeg {
+			return yt.fallbackToLowest(webPageMetadata)
 	}
 
 	respApi, err := yt.CallApi(webPageMetadata, DEFAULT_YT_CLIENT)
 	if err != nil {
-		return nil, errors.New("error: error while calling api, " + err.Error())
+		return nil, errors.New("error while calling api, " + err.Error())
 	}
 
 	if respApi.PlayabilityStatus.Status != "OK" {
-		yt.logger.Printf(logger.LOG_LEVEL_INFO, "[Error] %s\n", respApi.PlayabilityStatus.Reason)
-		return nil, errors.New("error: error api response != OK")
+		yt.logger.Printf(logger.LOG_LEVEL_INFO, "[error] %s\n", respApi.PlayabilityStatus.Reason)
+		return nil, errors.New("api response != OK")
 	}
 
 	if respApi.StreamingData == nil {
-		return nil, errors.New("error: could not get streamingData")
+		return nil, errors.New("could not get streamingData")
 	}
 	if strings.Contains(respApi.VideoDetails.Title, "/") {
 		respApi.VideoDetails.Title = strings.ReplaceAll(respApi.VideoDetails.Title, "/", "-")
 	}
 
-	bestAudio := pickBestAudio(respApi.StreamingData.AdaptiveFormats)
+	bestAudio := yt.pickBestAudio(respApi.StreamingData.AdaptiveFormats)
 	audioFileName := respApi.VideoDetails.Title + ".f" + strconv.Itoa(bestAudio.Itag) + ".mp4a"
 	audioSize, err := strconv.ParseInt(bestAudio.ContentLength, 10, 64)
 	if err != nil {
 		return nil, err
 	}
 
-	bestVideo := pickBestVideo(respApi.StreamingData.AdaptiveFormats)
+	// TODO: add support another video and audio codecs
+	bestVideo := yt.pickBestVideo(respApi.StreamingData.AdaptiveFormats)
 	videoFileName := respApi.VideoDetails.Title + ".f" + strconv.Itoa(bestVideo.Itag) + ".mp4"
 	videoSize, err := strconv.ParseInt(bestVideo.ContentLength, 10, 64)
 	if err != nil {
@@ -295,6 +308,7 @@ func (yt *YoutubeExtractor) ExtractVideoUrl(url string) (*core.DownloadItem, err
 	if outputFile == "[godl]videoplayback.mp4" {
 		outputFile = respApi.VideoDetails.Title + ".mp4"
 	}
+
 	var downloadItem = core.DownloadItem{
 		IsPlaylist: false,
 		OutputFile: respApi.VideoDetails.Title + ".mp4",
@@ -340,7 +354,7 @@ func (yt *YoutubeExtractor) ExtractWebPage(url string) (*YtMetaData, error) {
 	start := strings.Index(html[idx:], "{")
 	idx += start
 
-	jsonStr, err := extractJSON(html, idx)
+	jsonStr, err := yt.extractJSON(html, idx)
 	if err != nil {
 		yt.logger.Println(logger.LOG_LEVEL_DEBUG, err)
 		return nil, err
@@ -357,11 +371,11 @@ func (yt *YoutubeExtractor) ExtractWebPage(url string) (*YtMetaData, error) {
 		return nil, err
 	}
 
-	VisitorData := getVisitorData(html)
+	VisitorData := yt.getVisitorData(&html)
 	if VisitorData == "" {
 		return nil, errors.New(ErrVisitorDataNotFound)
 	}
-	jsUrl := getPlayerUrl(html)
+	jsUrl := yt.getPlayerUrl(&html)
 	if jsUrl == "" {
 		return nil, errors.New(ErrPlaylerUrlNotFound)
 	}
@@ -381,7 +395,8 @@ func (yt *YoutubeExtractor) ExtractWebPage(url string) (*YtMetaData, error) {
 		return nil, err
 	}
 
-	timeStamp := getSts(string(data))
+	jsString := string(data)
+	timeStamp := yt.getSts(&jsString)
 	if timeStamp == "" {
 		return nil, errors.New(ErrSignatureTimeStampNotFound)
 	}
@@ -391,7 +406,7 @@ func (yt *YoutubeExtractor) ExtractWebPage(url string) (*YtMetaData, error) {
 		return nil, err
 	}
 
-	apiKey := getApiKey(html)
+	apiKey := yt.getApiKey(&html)
 	apiUrl := "https://www.youtube.com/youtubei/v1/player?prettyPrint=false&key=" + apiKey
 	if apiKey == "" {
 		yt.logger.Printf(logger.LOG_LEVEL_WARN, "[warning] api key does not found in HTML")
@@ -407,4 +422,38 @@ func (yt *YoutubeExtractor) ExtractWebPage(url string) (*YtMetaData, error) {
 		ApiUrl:             apiUrl,
 		InnertubeApiKey:    apiKey,
 	}, nil
+}
+
+func (yt *YoutubeExtractor) fallbackToLowest(webPageMetadata *YtMetaData) (*core.DownloadItem, error) {
+		if len(webPageMetadata.PlayerResponse.StreamingData.Formats) < 1 {
+				return nil, errors.New("playerResponse streamingData does not contains any url or formats")
+		}
+
+		contentLength, err := strconv.Atoi(webPageMetadata.PlayerResponse.StreamingData.Formats[0].ContentLength)
+
+		var mediaInfo = []core.MediaInfo{
+				{
+						ID:       webPageMetadata.PlayerResponse.VideoDetails.VideoId,
+						Tittle:   webPageMetadata.PlayerResponse.VideoDetails.Title,
+						FileName: yt.configs.OutFile,
+						Size:     int64(contentLength), 
+						Format: core.Format{
+								URL:      webPageMetadata.PlayerResponse.StreamingData.Formats[0].Url,
+								Type:     "Video+Audio",
+								HasAudio: true,
+						},
+				},
+
+		}
+
+		downloadItem := core.DownloadItem{
+				IsPlaylist: false,
+				OutputFile: webPageMetadata.PlayerResponse.VideoDetails.Title + ".mp4",
+				OutputPath: yt.configs.Directory,
+
+				Entries: nil,
+				Media: mediaInfo,
+		} 
+
+		return &downloadItem, err
 }

@@ -2,15 +2,16 @@ package youtube
 
 import (
 	"errors"
+	"os/exec"
 	"regexp"
 	"strings"
 )
 
-func getUrlFromVideoID(videoID string) string {
+func (yt *YoutubeExtractor) getUrlFromVideoID(videoID string) string {
 	return "https://www.youtube.com/watch?v=" + videoID
 }
 
-func getUrlType(url string) (UrlType, error) {
+func (yt *YoutubeExtractor) GetUrlType(url string) (UrlType, error) {
 	match := UrlIsPlaylist.FindStringSubmatch(url)
 	if len(match) > 1 {
 		return PLAYLIST_URL, nil
@@ -21,10 +22,10 @@ func getUrlType(url string) (UrlType, error) {
 		return VIDEO_URL, nil
 	}
 
-	return 0, errors.New(ErrInvalidYoutubeUrl)
+	return UNKNOWN_MEDIA_URL, errors.New(ErrInvalidYoutubeUrl)
 }
 
-func extractJSON(s string, start int) (string, error) {
+func (yt *YoutubeExtractor) extractJSON(s string, start int) (string, error) {
 		var count int
 		var inString bool
 		var escape bool
@@ -63,9 +64,9 @@ func extractJSON(s string, start int) (string, error) {
 		return "", errors.New(ErrInvalidJSON)
 }
 
-func getVisitorData(html string) string {
+func (yt *YoutubeExtractor) getVisitorData(html *string) string {
 		re := regexp.MustCompile(`"VISITOR_DATA":"([^"]+)"`)
-		match := re.FindStringSubmatch(html)
+		match := re.FindStringSubmatch(*html)
 		if len(match) > 1 {
 				return match[1]
 		}
@@ -73,9 +74,9 @@ func getVisitorData(html string) string {
 		return "";
 }
 
-func getPlayerUrl(html string) string {
+func (yt *YoutubeExtractor) getPlayerUrl(html *string) string {
 		re := regexp.MustCompile(`"jsUrl":"([^"]+)"`)
-		match := re.FindStringSubmatch(html)
+		match := re.FindStringSubmatch(*html)
 		if len(match) > 1 {
 				return match[1];
 		}
@@ -83,9 +84,9 @@ func getPlayerUrl(html string) string {
 		return "";
 }
 
-func getSts(baseJs string) string {
+func (yt *YoutubeExtractor) getSts(baseJs *string) string {
 		re := regexp.MustCompile(`signatureTimestamp:(\d+)|sts:(\d+)`)
-		match := re.FindStringSubmatch(baseJs)
+		match := re.FindStringSubmatch(*baseJs)
 		if len(match) > 1 {
 				return match[1];
 		}
@@ -94,9 +95,9 @@ func getSts(baseJs string) string {
 
 }
 
-func getApiKey(html string) string {
+func (yt *YoutubeExtractor) getApiKey(html *string) string {
 		re := regexp.MustCompile(`"INNERTUBE_API_KEY":"([^"]+)"`)
-		match := re.FindStringSubmatch(html)
+		match := re.FindStringSubmatch(*html)
 
 		if len(match) > 1 {
 				return match[1]
@@ -105,7 +106,7 @@ func getApiKey(html string) string {
 		return ""
 }
 
-func pickBestAudio(formats []Formats) *Formats {
+func (yt *YoutubeExtractor) pickBestAudio(formats []Formats) *Formats {
 		var best *Formats
 
 		for i := range formats {
@@ -124,7 +125,7 @@ func pickBestAudio(formats []Formats) *Formats {
 		return best
 }
 
-func pickBestVideo(formats []Formats) *Formats {
+func (yt *YoutubeExtractor) pickBestVideo(formats []Formats) *Formats {
 		var best *Formats
 
 		for i := range formats {
@@ -145,7 +146,7 @@ func pickBestVideo(formats []Formats) *Formats {
 		return best
 }
 
-func pickBestThumbnail(thumbnails []Thumbnail) Thumbnail {
+func (yt *YoutubeExtractor) pickBestThumbnail(thumbnails []Thumbnail) Thumbnail {
 		var bthumbnail Thumbnail	
 
 		for _, el := range thumbnails {
@@ -155,4 +156,11 @@ func pickBestThumbnail(thumbnails []Thumbnail) Thumbnail {
 		}
 
 		return bthumbnail
+}
+
+func (yt *YoutubeExtractor) checkFFmpeg() bool {
+		cmd := exec.Command("ffmpeg", "-h")
+		err := cmd.Run()
+
+		return err == nil
 }

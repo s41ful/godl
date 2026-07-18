@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"godl/httpclient"
 	"io"
-	"net/http"
 	"strings"
 )
 
@@ -23,50 +21,6 @@ type PlaylistVideoListRenderer struct {
 				PlaylistVideoListRenderer	PlaylistVideoRenderer		`json:"playlistVideoRenderer"`
 		}	`json:"contents"`
 		PlaylistId 						string 						`json:"playlistId"`
-}
-
-func TestGetPlaylistEntryFromApi(url string) {
-
-		match := UrlIsPlaylist.FindStringSubmatch(url)
-
-		Id := match[1]
-
-		payload, _ := json.Marshal(Payload{
-				Context: Context{
-						Client: Client {
-								ClientName: "ANDROID_VR",
-								ClientVersion: "1.65.10",
-								DeviceMake: "Oculus",
-								DeviceModel: "Quest 3",
-								AndroidSdkVersion: 32,
-								UserAgent:  "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
-								Hl: "en",
-								OsName: "Android",
-								OsVersion: "12L",
-								TimeZone: "UTC",
-								Utcoffsetminutes: 0,	
-						},
-				},
-				BrowseId: "VL" + Id,
-				RacyCheckOk: true,
-				ContentCheckOk: true,
-		})
-
-			client := http.DefaultClient
-			apiUrl := "https://www.youtube.com/youtubei/v1/browse"
-			req, _ := http.NewRequest("POST", apiUrl, bytes.NewReader(payload))
-
-			resp, err := client.Do(req)
-			if err != nil {
-				panic(err)
-			}
-
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				panic(err)
-			}
-
-			fmt.Println("BODY::===========\n", string(body))
 }
 
 func (yt *YoutubeExtractor) GetListVideoFromPlaylist(playlistUrl string) (*PlaylistVideoListRenderer, error) {
@@ -118,7 +72,7 @@ func (yt *YoutubeExtractor) GetListVideoFromPlaylist(playlistUrl string) (*Playl
 
 		idx += start
 
-		jsonStr, err := extractJSON(string(data), idx)
+		jsonStr, err := yt.extractJSON(string(data), idx)
 		if err != nil {
 				return nil, err
 		}
