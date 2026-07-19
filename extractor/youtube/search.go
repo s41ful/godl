@@ -2,8 +2,10 @@ package youtube
 
 import (
 	"errors"
+	"godl/core"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -104,6 +106,39 @@ func (yt *YoutubeExtractor) getApiKey(html *string) string {
 		}
 
 		return ""
+}
+
+func (yt *YoutubeExtractor) pickSingleFormats(playerResponse *PlayerResponse) (*core.DownloadItem, error) {
+	if len(playerResponse.StreamingData.Formats) == 0 {
+		return nil, errors.New("playerResponse streamingData does not contains any url or formats")
+	}
+
+	contentLength, err := strconv.Atoi(playerResponse.StreamingData.Formats[0].ContentLength)
+
+	var mediaInfo = []core.MediaInfo{
+		{ ID:       playerResponse.VideoDetails.VideoId,
+			Tittle:   playerResponse.VideoDetails.Title,
+			FileName: playerResponse.VideoDetails.Title + ".mp4",
+			Size:     int64(contentLength), 
+			Format: core.Format{
+				URL:      playerResponse.StreamingData.Formats[0].Url,
+				Type:     "Video+Audio",
+				HasAudio: true,
+			},
+		},
+
+	}
+
+	downloadItem := core.DownloadItem{
+		IsPlaylist: false,
+		OutputFile: playerResponse.VideoDetails.Title + ".mp4",
+		OutputPath: yt.configs.Directory,
+
+		Entries: nil,
+		Media: mediaInfo,
+	} 
+
+	return &downloadItem, err
 }
 
 func (yt *YoutubeExtractor) pickBestAudio(formats []Formats) *Formats {

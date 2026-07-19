@@ -23,9 +23,9 @@ const (
 )
 
 const (		
-		UNKNOWN_MEDIA_URL = iota
-		VIDEO_URL 
-		PLAYLIST_URL
+	UNKNOWN_MEDIA_URL = iota
+	VIDEO_URL 
+	PLAYLIST_URL
 )
 
 var (
@@ -177,7 +177,7 @@ func (yt *YoutubeExtractor) Extract(url string) (*core.DownloadItem, error) {
 	yt.logger.SetFlags(0)
 
 	if !yt.hasFFmpeg {
-			yt.logger.Println(logger.LOG_LEVEL_INFO, "[warning] " + WarnFFmpegNotInstalled)
+		yt.logger.Println(logger.LOG_LEVEL_INFO, "[warning] " + WarnFFmpegNotInstalled)
 	}
 
 	switch urlType {
@@ -241,7 +241,7 @@ func (yt *YoutubeExtractor) ExtractVideoUrl(url string) (*core.DownloadItem, err
 	}
 
 	if !yt.hasFFmpeg {
-			return yt.fallbackToLowest(webPageMetadata)
+		return yt.fallbackToLowest(webPageMetadata)
 	}
 
 	respApi, err := yt.CallApi(webPageMetadata, DEFAULT_YT_CLIENT)
@@ -425,35 +425,41 @@ func (yt *YoutubeExtractor) ExtractWebPage(url string) (*YtMetaData, error) {
 }
 
 func (yt *YoutubeExtractor) fallbackToLowest(webPageMetadata *YtMetaData) (*core.DownloadItem, error) {
-		if len(webPageMetadata.PlayerResponse.StreamingData.Formats) < 1 {
-				return nil, errors.New("playerResponse streamingData does not contains any url or formats")
+	if len(webPageMetadata.PlayerResponse.StreamingData.Formats) == 0 {
+		respApi, err := yt.CallApi(webPageMetadata, DEFAULT_YT_CLIENT)
+		if err != nil {
+			return nil, errors.New("error while calling api, " + err.Error()) 
 		}
 
-		contentLength, err := strconv.Atoi(webPageMetadata.PlayerResponse.StreamingData.Formats[0].ContentLength)
+		return yt.pickSingleFormats(&respApi)
+	}
 
-		var mediaInfo = []core.MediaInfo{
-				{
-						ID:       webPageMetadata.PlayerResponse.VideoDetails.VideoId,
-						Tittle:   webPageMetadata.PlayerResponse.VideoDetails.Title,
-						FileName: yt.configs.OutFile,
-						Size:     int64(contentLength), 
-						Format: core.Format{
-								URL:      webPageMetadata.PlayerResponse.StreamingData.Formats[0].Url,
-								Type:     "Video+Audio",
-								HasAudio: true,
-						},
-				},
+	contentLength, err := strconv.Atoi(webPageMetadata.PlayerResponse.StreamingData.Formats[0].ContentLength)
 
-		}
+	var mediaInfo = []core.MediaInfo{
+		{
+			ID:       webPageMetadata.PlayerResponse.VideoDetails.VideoId,
+			Tittle:   webPageMetadata.PlayerResponse.VideoDetails.Title,
+			// TODO: do not hardcode "mp4" instead parse mimetype in json and get the codecs
+			FileName: webPageMetadata.PlayerResponse.VideoDetails.Title + ".mp4",
+			Size:     int64(contentLength), 
+			Format: core.Format{
+				URL:      webPageMetadata.PlayerResponse.StreamingData.Formats[0].Url,
+				Type:     "Video+Audio",
+				HasAudio: true,
+			},
+		},
 
-		downloadItem := core.DownloadItem{
-				IsPlaylist: false,
-				OutputFile: webPageMetadata.PlayerResponse.VideoDetails.Title + ".mp4",
-				OutputPath: yt.configs.Directory,
+	}
 
-				Entries: nil,
-				Media: mediaInfo,
-		} 
+	downloadItem := core.DownloadItem{
+		IsPlaylist: false,
+		OutputFile: webPageMetadata.PlayerResponse.VideoDetails.Title + ".mp4",
+		OutputPath: yt.configs.Directory,
 
-		return &downloadItem, err
+		Entries: nil,
+		Media: mediaInfo,
+	} 
+
+	return &downloadItem, err
 }
