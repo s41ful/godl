@@ -11,8 +11,8 @@ import (
 )
 
 var DEFAULT_PAYLOAD map[string]Payload = map[string]Payload{
-		"android_vr": Payload{
-				Context: Context{
+		"android_vr": {
+				Context: Context {
 						Client: Client {
 								ClientName: "ANDROID_VR",
 								ClientVersion: "1.65.10",
@@ -37,7 +37,7 @@ var DEFAULT_PAYLOAD map[string]Payload = map[string]Payload{
 				},
 		},
 
-		"web": Payload{
+		"web": {
 				Context: Context{
 						Client: Client{
 								ClientName: "WEB",
@@ -57,12 +57,14 @@ var DEFAULT_PAYLOAD map[string]Payload = map[string]Payload{
 				RacyCheckOk: true,
 		},
 
-		"android": Payload{
+		"android": {
 				Context: Context{
 						Client: Client{
 								ClientName:    "ANDROID",
 								ClientVersion: "17.31.35",
 								UserAgent:     "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
+								OsName: "visionOS",
+								OsVersion: "26.5.230471",
 								Hl:            "en",
 								TimeZone:      "UTC",
 								Utcoffsetminutes: 0,
@@ -71,8 +73,29 @@ var DEFAULT_PAYLOAD map[string]Payload = map[string]Payload{
 				ContentCheckOk: true,
 				RacyCheckOk: true,
 		},
-}
 
+		"visionos": {
+				Context: Context{
+						Client: Client{
+								ClientName:    "VISIONOS",
+								ClientVersion: "1.02",
+								DeviceMake: "Apple",
+								DeviceModel: "RealityDevice17",
+								UserAgent:     "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+								Hl:            "en",
+								TimeZone:      "UTC",
+								Utcoffsetminutes: 0,
+						},
+				},
+				PlaybackContext: &PlaybackContext{
+						ContentPlaybackContext: &ContentPlaybackContext{
+								Html5Preference: "HTML5_PREF_WANTS",
+						},
+				},
+				ContentCheckOk: true,
+				RacyCheckOk: true,
+		},
+}
 
 func (yt *YoutubeExtractor) CallApi(ytData *YtMetaData, ytClient string)(PlayerResponse, error){
 		req, err := yt.MakeApiRequest(ytData, ytClient)
@@ -95,6 +118,7 @@ func (yt *YoutubeExtractor) CallApi(ytData *YtMetaData, ytClient string)(PlayerR
 		playerResponse := PlayerResponse{}
 
 		if resp.StatusCode == 400 {
+				yt.logger.Println(logger.LOG_LEVEL_DEBUG, "[innerHTML]" + string(respApi))
 				return playerResponse, errors.New("[error] response status == 400")
 		}
 
@@ -128,6 +152,11 @@ func (yt *YoutubeExtractor) NewPayload(clientName, vidioId string, signatureTime
 				payload.PlaybackContext.ContentPlaybackContext.SignatureTimeStamp = signatureTimestamp
 
 				return payload
+		case "visionOS", "VISIONOS", "visionos":
+				payload = DEFAULT_PAYLOAD[strings.ToLower(clientName)]
+				payload.VideoId = vidioId
+				payload.PlaybackContext.ContentPlaybackContext.SignatureTimeStamp = signatureTimestamp
+			return payload
 		default:
 				return payload
 		}
@@ -156,6 +185,16 @@ func (yt *YoutubeExtractor) addYtClientHeaders(req *http.Request, clientName str
 				req.Header.Set("X-Youtube-Client-Name", "1") // ANDROID = 3
 				req.Header.Set("X-Youtube-Client-Version", "2")
 				req.Header.Set("Origin", "https://www.youtube.com")
+
+		case "visionOS", "visionos", "VISIONOS":
+				req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15")
+				req.Header.Set("X-Youtube-Client-Version", "1.02")
+				req.Header.Set("X-Youtube-Client-Name", "101") // ANDROID = 3
+				req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+				req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+				req.Header.Add("Origin", "https://www.youtube.com")
+				req.Header.Set("Content-Type", "application/json")
+
 
 		default:
 		}
@@ -222,6 +261,30 @@ func (yt *YoutubeExtractor) MakeApiRequest(ytData *YtMetaData, clientName string
 				req.Header.Set("X-Goog-Visitor-Id", ytData.VisitorData)
 
 				return req, nil
+
+			case "visionOS": {
+				payload := yt.NewPayload(clientName, ytData.PlayerResponse.VideoDetails.VideoId, ytData.SignatureTimeStamp)
+
+				body, err := json.Marshal(payload)
+				if err != nil {
+						return nil, err
+				}
+
+				req, err := http.NewRequest("POST", ytData.ApiUrl, bytes.NewReader(body))
+				if err != nil {
+						return nil, err
+				}
+
+				yt.addYtClientHeaders(req, clientName)
+
+				for i := range ytData.Cookies {
+						req.AddCookie(ytData.Cookies[i])
+				}
+
+				req.Header.Set("X-Goog-Visitor-Id", ytData.VisitorData)
+
+				return req, nil
+			}
 		default:
 				return nil, errors.New("error: unknown clientName")
 		}

@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	DEFAULT_YT_CLIENT          = "ANDROID_VR"
+	DEFAULT_YT_CLIENT          = "visionOS"
 	YT_INITIAL_PLAYER_RESPONSE = "ytInitialPlayerResponse"
 	YT_PLAYLIST_VIDEO_RENDERER = "playlistVideoListRenderer"
 )
@@ -153,7 +153,6 @@ type YoutubeExtractor struct {
 
 func NewYoutubeExtractor(config *config.Config) *YoutubeExtractor {
 	return &YoutubeExtractor{
-		client:  httpclient.NewClient(config.Debug, config.DownloaderCfg.MaxRetries),
 		config:  *config.ExtractorConfig,
 		configs: config,
 		logger:  config.Logger,
@@ -161,7 +160,7 @@ func NewYoutubeExtractor(config *config.Config) *YoutubeExtractor {
 }
 
 func (yt *YoutubeExtractor) InitConfig(cfg *config.Config) {
-	yt.client 	= httpclient.NewClient(cfg.Debug, cfg.ExtractorConfig.MaxRetries)
+	yt.client 	= httpclient.NewClient(cfg.ExtractorConfig.PrintTraffic, cfg.ExtractorConfig.MaxRetries)
 	yt.config 	= *cfg.ExtractorConfig
 	yt.configs 	= cfg
 	yt.logger 	= cfg.Logger
